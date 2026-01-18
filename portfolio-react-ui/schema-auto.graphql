@@ -1,0 +1,40 @@
+"""Exposes a URL that specifies the behaviour of this scalar."""
+directive @specifiedBy(
+  """The URL that specifies the behaviour of this scalar."""
+  url: String!
+) on SCALAR
+
+"""Indicates an Input Object is a OneOf Input Object."""
+directive @oneOf on INPUT_OBJECT
+
+type ClientFilterInfo {
+  id: String
+  label: String
+  uuids: String
+}
+
+type ClientInfo {
+  baseCurrency: String
+  file: String
+  id: String
+  label: String
+}
+
+type DeltaPoint {
+  date: String
+  value: MoneyInfo
+}
+
+type MoneyInfo {
+  amount: Float!
+  currencyCode: String
+}
+
+"""Query root"""
+type Query {
+  clientFilterAccumulatedDelta(filterId: String, clientId: String, endDate: String, startDate: String): [DeltaPoint]
+  clients: [ClientInfo]
+  clientFilterDelta(filterId: String, clientId: String, endDate: String, startDate: String): MoneyInfo
+  clientFilters(clientId: String): [ClientFilterInfo]
+}
+
