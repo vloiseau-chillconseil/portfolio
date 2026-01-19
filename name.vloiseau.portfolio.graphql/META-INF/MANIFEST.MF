@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Portfolio GraphQL
 Bundle-SymbolicName: name.vloiseau.portfolio.graphql
-Bundle-Version: 0.81.2.qualifier
+Bundle-Version: 0.81.2
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
 Require-Bundle: name.abuchen.portfolio;bundle-version="0.81.2",

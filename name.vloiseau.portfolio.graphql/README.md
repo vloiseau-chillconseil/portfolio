@@ -1,24 +1,46 @@
-Commandes importantes
+# Information
 
-Compilation:
+This project is a POC to integrate a web UI provided by the Portfolio Performance application.
+The basic idea is:
+- A Java GraphQL (SPQR) server exposes PP data and actions (queries and mutations).
+- A React web app consumes this data to build a web UI.
+- Capacitor generates native iOS/Android apps from this React web app.
+
+The web server can be enabled via preferences.
+
+The goal is to let me build my own app connected in real time to PP running on my machine (or any machine) from my phone.
+
+For security reasons, you must NOT expose the ports to the public internet. This topic still needs to be handled.
+Personally, I access PP through a VPN.
+
+
+# Technical
+
+The `name.vloiseau.portfolio.graphql` directory is an Eclipse Java bundle that contains the GraphQL API and can serve the React static site.
+The `portfolio-react-ui` directory contains the React site source code.
+
+## How it works
+- React development is made easier with Vite (hot reloading in the browser without recompilation, restart, or page reload).
+- NPM tools build the site as a static deliverable.
+- To simplify the build: Maven builds the React code and places it in `name.vloiseau.portfolio.graphql/web` so it is packaged as Java static resources and served as such.
+- NPM is automatically downloaded and run by the Maven plugin, so the built site is not committed to the source repository.
+
+
+# Branch
+The development branch `feature_graphql_react_ui` is rebased on the stable tag `0.82.2` so I can use my code on top of the stable PP codebase.
+
+
+# Build
+
+Be careful to update the version number in these files after rebasing:
+- `name.vloiseau.portfolio.graphql/pom.xml`
+- `name.vloiseau.portfolio.graphql/META-INF/MANIFEST.MF`
+
+```sh
 mvn -f portfolio-app/pom.xml clean verify
+```
 
-
-mvn -f portfolio-app/pom.xml clean verify  -DskipTests -Dtycho.test.skip=true -Dtycho.os=macosx -Dtycho.ws=cocoa -Dtycho.arch=aarch64
-
-
-Lancement:
-portfolio-product/target/products/name.abuchen.portfolio.product/macosx/cocoa/aarch64/PortfolioPerformance.app/Contents/MacOS/PortfolioPerformance
-Lancement en mode debug:
-portfolio-product/target/products/name.abuchen.portfolio.product/macosx/cocoa/aarch64/PortfolioPerformance.app/Contents/MacOS/PortfolioPerformance -consoleLog -vmargs "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005
-
-
-
-La génération des ressources maven permet de générer la version compilée du site web statique React
-
-mvn -f portfolio-app/pom.xml install 
-mvn -f portfolio-app/pom.xml generate-resources
-
-
-
-mvn -f portfolio-app/pom.xml -DskipTests -pl :portfolio-target-definition -am install
+```sh
+rm -rf /Applications/PortfolioPerformance.app/
+cp -R portfolio-product/target/products/name.abuchen.portfolio.product/macosx/cocoa/aarch64/PortfolioPerformance.app /Applications/PortfolioPerformance.app
+```
