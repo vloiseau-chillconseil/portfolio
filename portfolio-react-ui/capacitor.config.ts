@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.portfolio.react",
-  appName: "Portfolio React",
+  appId: "name.vloiseau.portfolio",
+  appName: "Portfolio Performances",
   webDir: "dist",
   bundledWebRuntime: false,
 };

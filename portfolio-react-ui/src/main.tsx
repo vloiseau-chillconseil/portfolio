@@ -11,7 +11,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <ApolloProvider client={apolloClient}>
       <CurrentClientProvider>
-        <BrowserRouter basename="/ui">
+    <BrowserRouter>
           <App />
         </BrowserRouter>
       </CurrentClientProvider>
