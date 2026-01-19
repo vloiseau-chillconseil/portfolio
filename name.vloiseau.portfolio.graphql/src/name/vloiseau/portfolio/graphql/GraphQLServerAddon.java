@@ -6,12 +6,11 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import org.eclipse.core.runtime.Platform;
+import org.eclipse.jface.preference.IPreferenceStore;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
@@ -26,11 +25,12 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import name.abuchen.portfolio.ui.PortfolioPlugin;
+import name.abuchen.portfolio.ui.UIConstants;
 import name.abuchen.portfolio.ui.editor.ClientInputFactory;
 
 public class GraphQLServerAddon
 {
-    private static final String DEFAULT_HOST = "127.0.0.1";
+    private static final String DEFAULT_HOST = "0.0.0.0";
     private static final int DEFAULT_PORT = 7524;
 
     private final Gson gson = new Gson();
@@ -44,7 +44,7 @@ public class GraphQLServerAddon
     @PostConstruct
     public void start()
     {
-        GraphQLConfig config = GraphQLConfig.fromArgs(Platform.getApplicationArgs());
+        GraphQLConfig config = GraphQLConfig.fromPreferences(PortfolioPlugin.getDefault().getPreferenceStore());
         if (!config.enabled())
             return;
 
@@ -376,62 +376,19 @@ public class GraphQLServerAddon
 
     private record GraphQLConfig(boolean enabled, String host, int port)
     {
-        private static GraphQLConfig fromArgs(String[] args)
+        private static GraphQLConfig fromPreferences(IPreferenceStore store)
         {
-            boolean enabled = true;
-            String host = DEFAULT_HOST;
-            int port = DEFAULT_PORT;
+            boolean enabled = store.getBoolean(UIConstants.Preferences.WEB_SERVER_ENABLED);
+            String host = store.getString(UIConstants.Preferences.WEB_SERVER_HOST);
+            int port = store.getInt(UIConstants.Preferences.WEB_SERVER_PORT);
 
-            for (String arg : args)
-            {
-                if (arg == null)
-                    continue;
-
-                if (arg.equals("--graphql"))
-                {
-                    enabled = true;
-                }
-                else if (arg.startsWith("--graphql="))
-                {
-                    enabled = parseBoolean(arg.substring("--graphql=".length()), enabled);
-                }
-                else if (arg.startsWith("--graphql-host="))
-                {
-                    host = arg.substring("--graphql-host=".length());
-                }
-                else if (arg.startsWith("--graphql-port="))
-                {
-                    port = parseInt(arg.substring("--graphql-port=".length()), port);
-                }
-            }
+            if (host == null || host.isBlank())
+                host = DEFAULT_HOST;
+            if (port <= 0)
+                port = DEFAULT_PORT;
 
             return new GraphQLConfig(enabled, host, port);
         }
 
-        private static boolean parseBoolean(String raw, boolean defaultValue)
-        {
-            if (raw == null)
-                return defaultValue;
-
-            String normalized = raw.trim().toLowerCase(Locale.ROOT);
-            if ("true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized))
-                return true;
-            if ("false".equals(normalized) || "0".equals(normalized) || "no".equals(normalized))
-                return false;
-
-            return defaultValue;
-        }
-
-        private static int parseInt(String raw, int defaultValue)
-        {
-            try
-            {
-                return Integer.parseInt(raw);
-            }
-            catch (NumberFormatException e)
-            {
-                return defaultValue;
-            }
-        }
     }
 }

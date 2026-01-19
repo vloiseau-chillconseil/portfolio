@@ -29,6 +29,9 @@ public class PreferencesInitializer extends AbstractPreferenceInitializer
         store.setDefault(UIConstants.Preferences.AUTO_SAVE_FILE, 0);
         store.setDefault(UIConstants.Preferences.STORE_SETTINGS_NEXT_TO_FILE, false);
         store.setDefault(UIConstants.Preferences.DOUBLE_CLICK_CELL_TO_EDIT, true);
+        store.setDefault(UIConstants.Preferences.WEB_SERVER_ENABLED, false);
+        store.setDefault(UIConstants.Preferences.WEB_SERVER_HOST, "0.0.0.0"); //$NON-NLS-1$
+        store.setDefault(UIConstants.Preferences.WEB_SERVER_PORT, 7524);
         store.setDefault(UIConstants.Preferences.ENABLE_SWTCHART_PIECHARTS,
                         Platform.getOS().equals(Platform.OS_LINUX) || (Platform.getOS().equals(Platform.OS_MACOSX)
                                         && Platform.getOSArch().equals(Platform.ARCH_X86_64)

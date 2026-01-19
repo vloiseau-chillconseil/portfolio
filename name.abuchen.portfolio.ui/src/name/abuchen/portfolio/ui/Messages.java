@@ -1238,6 +1238,9 @@ public class Messages extends NLS
     public static String PrefLabelNote;
     public static String PrefLabelProxyHost;
     public static String PrefLabelProxyPort;
+    public static String PrefLabelWebServerEnabled;
+    public static String PrefLabelWebServerHost;
+    public static String PrefLabelWebServerPort;
     public static String PrefLabelQuoteDigits;
     public static String PrefLabelSharesDigits;
     public static String PrefLabelUseIndirectQuotation;
@@ -1276,6 +1279,7 @@ public class Messages extends NLS
     public static String PrefTitlePresentation;
     public static String PrefTitleProxy;
     public static String PrefTitleQuandl;
+    public static String PrefTitleWebServer;
     public static String PrefTitleTwelveData;
     public static String PrefTwelveDataAPIKey;
     public static String PrefUpdateQuotesAfterFileOpen;

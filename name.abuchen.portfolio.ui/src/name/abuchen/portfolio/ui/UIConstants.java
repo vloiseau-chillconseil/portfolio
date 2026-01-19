@@ -199,6 +199,13 @@ public interface UIConstants
         String STORE_SETTINGS_NEXT_TO_FILE = "STORE_SETTINGS_NEXT_TO_FILE"; //$NON-NLS-1$
 
         /**
+         * Preference key for local web server configuration.
+         */
+        String WEB_SERVER_ENABLED = "WEB_SERVER_ENABLED"; //$NON-NLS-1$
+        String WEB_SERVER_HOST = "WEB_SERVER_HOST"; //$NON-NLS-1$
+        String WEB_SERVER_PORT = "WEB_SERVER_PORT"; //$NON-NLS-1$
+
+        /**
          * @deprecated replaced by the flag experiments
          */
         @Deprecated(since = "2025")

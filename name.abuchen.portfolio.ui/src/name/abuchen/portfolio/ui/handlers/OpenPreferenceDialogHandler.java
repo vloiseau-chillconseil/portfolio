@@ -42,6 +42,7 @@ import name.abuchen.portfolio.ui.preferences.QuandlPreferencePage;
 import name.abuchen.portfolio.ui.preferences.ThemePreferencePage;
 import name.abuchen.portfolio.ui.preferences.TwelveDataPreferencePage;
 import name.abuchen.portfolio.ui.preferences.UpdatePreferencePage;
+import name.abuchen.portfolio.ui.preferences.WebServerPreferencePage;
 import name.abuchen.portfolio.ui.update.UpdateHelper;
 
 @SuppressWarnings("restriction")
@@ -97,6 +98,7 @@ public class OpenPreferenceDialogHandler
         pm.addTo("api", new PreferenceNode("quandl", new QuandlPreferencePage())); //$NON-NLS-1$ //$NON-NLS-2$
 
         pm.addToRoot(new PreferenceNode("proxy", new ProxyPreferencePage())); //$NON-NLS-1$
+        pm.addToRoot(new PreferenceNode("webserver", new WebServerPreferencePage())); //$NON-NLS-1$
         pm.addToRoot(new PreferenceNode("experiments", new ExperimentsPreferencePage())); //$NON-NLS-1$
         if (UpdateHelper.isInAppUpdateEnabled())
             pm.addToRoot(new PreferenceNode("updates", new UpdatePreferencePage())); //$NON-NLS-1$
