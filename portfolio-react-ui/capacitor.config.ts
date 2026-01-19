@@ -5,6 +5,11 @@ const config: CapacitorConfig = {
   appName: "Portfolio Performances",
   webDir: "dist",
   bundledWebRuntime: false,
+  plugins: {
+    StatusBar: {
+      overlaysWebView: false,
+    },
+  },
 };
 
 export default config;
