@@ -44,3 +44,6 @@ mvn -f portfolio-app/pom.xml clean verify
 rm -rf /Applications/PortfolioPerformance.app/
 cp -R portfolio-product/target/products/name.abuchen.portfolio.product/macosx/cocoa/aarch64/PortfolioPerformance.app /Applications/PortfolioPerformance.app
 ```
+
+# Application log:
+`less "/Users/vloiseau/Library/Application Support/name.abuchen.portfolio.product/workspace/.metadata/.log"`
