@@ -32,6 +32,7 @@ public class GraphQLServerAddon
 {
     private static final String DEFAULT_HOST = "0.0.0.0";
     private static final int DEFAULT_PORT = 7524;
+    private static final String CORS_ALLOWED_ORIGIN = "capacitor://localhost";
 
     private final Gson gson = new Gson();
 
@@ -93,12 +94,20 @@ public class GraphQLServerAddon
 
     private void handleRequest(HttpExchange exchange, GraphQL graphQL) throws IOException
     {
+        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod()))
+        {
+            applyCorsHeaders(exchange);
+            exchange.sendResponseHeaders(204, -1);
+            return;
+        }
+
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod()))
         {
             sendPlainText(exchange, 405, "Only POST is supported");
             return;
         }
 
+        applyCorsHeaders(exchange);
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         Map<String, Object> payload;
         try
@@ -372,6 +381,13 @@ public class GraphQLServerAddon
                         </body>
                         </html>
                         """;
+    }
+
+    private void applyCorsHeaders(HttpExchange exchange)
+    {
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", CORS_ALLOWED_ORIGIN);
+        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, OPTIONS");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization");
     }
 
     private record GraphQLConfig(boolean enabled, String host, int port)
