@@ -59,7 +59,7 @@ public class GraphQLServerAddon
             server = HttpServer.create(new InetSocketAddress(config.host(), config.port()), 0);
             server.createContext("/graphql", exchange -> handleRequest(exchange, graphQL));
             server.createContext("/graphiql", this::handleGraphiQL);
-            server.createContext("/ui", this::handleStatic);
+            server.createContext("/", this::handleStatic);
             server.createContext("/assets", this::handleStatic);
             executor = Executors.newSingleThreadExecutor(r -> {
                 Thread thread = new Thread(r, "PortfolioGraphQL");
