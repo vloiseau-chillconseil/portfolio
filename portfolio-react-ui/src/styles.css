@@ -47,6 +47,20 @@ body {
   width: 100%;
 }
 
+.date-range-native {
+  width: 100%;
+}
+
+.date-range-native input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.88);
+}
+
 @media (max-width: 768px) {
   .app-content {
     padding: 16px;

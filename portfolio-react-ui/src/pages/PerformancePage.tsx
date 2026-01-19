@@ -1,4 +1,5 @@
 import { gql, useQuery } from "@apollo/client";
+import { Capacitor } from "@capacitor/core";
 import {
   Card,
   DatePicker,
@@ -67,8 +68,11 @@ const CLIENT_FILTER_ACCUMULATED_QUERY = gql`
 const PerformancePage = () => {
   const { currentClient } = useCurrentClient();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const [nativeStartDate, setNativeStartDate] = useState("");
+  const [nativeEndDate, setNativeEndDate] = useState("");
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
   const skipNextSaveRef = useRef(false);
+  const isNativePlatform = Capacitor.isNativePlatform();
 
   const { data: filtersData, loading: filtersLoading } = useQuery<{
     clientFilters: Array<{ id: string | null; label: string | null }> | null;
@@ -123,6 +127,18 @@ const PerformancePage = () => {
       setSelectedFilterId(null);
     }
   }, [currentClient?.id]);
+
+  useEffect(() => {
+    if (!isNativePlatform) return;
+    if (!dateRange) {
+      setNativeStartDate("");
+      setNativeEndDate("");
+      return;
+    }
+
+    setNativeStartDate(dateRange[0].format("YYYY-MM-DD"));
+    setNativeEndDate(dateRange[1].format("YYYY-MM-DD"));
+  }, [dateRange, isNativePlatform]);
 
   useEffect(() => {
     if (!currentClient?.id) return;
@@ -182,6 +198,16 @@ const PerformancePage = () => {
   );
 
   const delta = deltaQuery.data?.clientFilterDelta;
+  const nativeStartValue = nativeStartDate || "";
+  const nativeEndValue = nativeEndDate || "";
+
+  const updateNativeRange = (startValue: string, endValue: string) => {
+    if (startValue && endValue) {
+      setDateRange([dayjs(startValue), dayjs(endValue)]);
+      return;
+    }
+    setDateRange(null);
+  };
 
   const chartOption = useMemo(() => {
     return {
@@ -224,13 +250,36 @@ const PerformancePage = () => {
         <Space direction="vertical" size="middle" className="form-stack">
           <Space direction="vertical" size={4}>
             <Typography.Text>Plage de dates</Typography.Text>
-            <DatePicker.RangePicker
-              value={dateRange}
-              onChange={(value) =>
-                setDateRange(value && value[0] && value[1] ? [value[0], value[1]] : null)
-              }
-              allowClear
-            />
+            {isNativePlatform ? (
+              <Space direction="vertical" size={8} className="date-range-native">
+                <input
+                  type="date"
+                  value={nativeStartValue}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setNativeStartDate(nextValue);
+                    updateNativeRange(nextValue, nativeEndValue);
+                  }}
+                />
+                <input
+                  type="date"
+                  value={nativeEndValue}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setNativeEndDate(nextValue);
+                    updateNativeRange(nativeStartValue, nextValue);
+                  }}
+                />
+              </Space>
+            ) : (
+              <DatePicker.RangePicker
+                value={dateRange}
+                onChange={(value) =>
+                  setDateRange(value && value[0] && value[1] ? [value[0], value[1]] : null)
+                }
+                allowClear
+              />
+            )}
           </Space>
           <Space direction="vertical" size={4}>
             <Typography.Text>Client filter</Typography.Text>
