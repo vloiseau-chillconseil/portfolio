@@ -16,3 +16,5 @@ name.vloiseau.portfolio.graphql/web/*
 
 portfolio-react-ui/dist
 portfolio-react-ui/node
+portfolio-react-ui/.vite
+
