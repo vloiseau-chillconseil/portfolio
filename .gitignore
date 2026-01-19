@@ -11,3 +11,8 @@ workspace
 *.ipr
 
 .claude/settings.local.json
+name.vloiseau.portfolio.graphql/web/*
+!name.vloiseau.portfolio.graphql/web/.gitkeep
+
+portfolio-react-ui/dist
+portfolio-react-ui/node
