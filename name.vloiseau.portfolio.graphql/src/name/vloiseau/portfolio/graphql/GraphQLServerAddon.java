@@ -3,6 +3,7 @@ package name.vloiseau.portfolio.graphql;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Locale;
@@ -57,6 +58,8 @@ public class GraphQLServerAddon
             server = HttpServer.create(new InetSocketAddress(config.host(), config.port()), 0);
             server.createContext("/graphql", exchange -> handleRequest(exchange, graphQL));
             server.createContext("/graphiql", this::handleGraphiQL);
+            server.createContext("/ui", this::handleStatic);
+            server.createContext("/assets", this::handleStatic);
             executor = Executors.newSingleThreadExecutor(r -> {
                 Thread thread = new Thread(r, "PortfolioGraphQL");
                 thread.setDaemon(true);
@@ -164,6 +167,101 @@ public class GraphQLServerAddon
         try (OutputStream output = exchange.getResponseBody())
         {
             output.write(responseBytes);
+        }
+    }
+
+    private void handleStatic(HttpExchange exchange) throws IOException
+    {
+        if (!"GET".equalsIgnoreCase(exchange.getRequestMethod()))
+        {
+            sendPlainText(exchange, 405, "Only GET is supported");
+            return;
+        }
+
+        String path = exchange.getRequestURI().getPath();
+        String subPath;
+        if (path.startsWith("/ui"))
+            subPath = path.substring(3);
+        else if (path.startsWith("/assets"))
+            subPath = path;
+        else
+            subPath = path;
+        subPath = URLDecoder.decode(subPath, StandardCharsets.UTF_8);
+
+        if (subPath.isEmpty() || "/".equals(subPath))
+            subPath = "/index.html";
+
+        if (subPath.contains(".."))
+        {
+            sendPlainText(exchange, 400, "Invalid path");
+            return;
+        }
+
+        String resourcePath = "/web" + subPath;
+        byte[] content = readResource(resourcePath);
+        if (content == null)
+        {
+            content = readResource("/web/index.html");
+            if (content == null)
+            {
+                sendPlainText(exchange, 404, "Not found");
+                return;
+            }
+            resourcePath = "/web/index.html";
+        }
+
+        sendBytes(exchange, 200, content, contentTypeFor(resourcePath));
+    }
+
+    private byte[] readResource(String resourcePath) throws IOException
+    {
+        try (var stream = GraphQLServerAddon.class.getResourceAsStream(resourcePath))
+        {
+            if (stream == null)
+                return null;
+            return stream.readAllBytes();
+        }
+    }
+
+    private String contentTypeFor(String resourcePath)
+    {
+        String lower = resourcePath.toLowerCase();
+        if (lower.endsWith(".html"))
+            return "text/html; charset=UTF-8";
+        if (lower.endsWith(".js"))
+            return "text/javascript; charset=UTF-8";
+        if (lower.endsWith(".css"))
+            return "text/css; charset=UTF-8";
+        if (lower.endsWith(".json"))
+            return "application/json; charset=UTF-8";
+        if (lower.endsWith(".svg"))
+            return "image/svg+xml";
+        if (lower.endsWith(".png"))
+            return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg"))
+            return "image/jpeg";
+        if (lower.endsWith(".gif"))
+            return "image/gif";
+        if (lower.endsWith(".woff"))
+            return "font/woff";
+        if (lower.endsWith(".woff2"))
+            return "font/woff2";
+        if (lower.endsWith(".ttf"))
+            return "font/ttf";
+        if (lower.endsWith(".ico"))
+            return "image/x-icon";
+        if (lower.endsWith(".map"))
+            return "application/json; charset=UTF-8";
+        return "application/octet-stream";
+    }
+
+    private void sendBytes(HttpExchange exchange, int status, byte[] content, String contentType) throws IOException
+    {
+        exchange.getResponseHeaders().set("Content-Type", contentType);
+        exchange.sendResponseHeaders(status, content.length);
+        try (OutputStream output = exchange.getResponseBody())
+        {
+            output.write(content);
         }
     }
 

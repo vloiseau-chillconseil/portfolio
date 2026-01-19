@@ -13,6 +13,11 @@
 	<artifactId>name.vloiseau.portfolio.graphql</artifactId>
 	<packaging>eclipse-plugin</packaging>
 
+	<properties>
+		<reactui.dir>${project.basedir}/../portfolio-react-ui</reactui.dir>
+		<reactui.dist>${reactui.dir}/dist</reactui.dist>
+	</properties>
+
 	<build>
 		<plugins>
 			<plugin>
@@ -21,6 +26,68 @@
 					<execution>
 						<id>enforce-versions</id>
 						<phase>none</phase>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>com.github.eirslett</groupId>
+				<artifactId>frontend-maven-plugin</artifactId>
+				<version>1.15.0</version>
+				<configuration>
+					<workingDirectory>${reactui.dir}</workingDirectory>
+				</configuration>
+				<executions>
+					<execution>
+						<id>install-node-and-npm</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>install-node-and-npm</goal>
+						</goals>
+						<configuration>
+							<nodeVersion>v20.11.1</nodeVersion>
+							<npmVersion>10.2.4</npmVersion>
+						</configuration>
+					</execution>
+					<execution>
+						<id>npm-ci</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>npm</goal>
+						</goals>
+						<configuration>
+							<arguments>ci</arguments>
+						</configuration>
+					</execution>
+					<execution>
+						<id>npm-build</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>npm</goal>
+						</goals>
+						<configuration>
+							<arguments>run build</arguments>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<artifactId>maven-resources-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>copy-react-ui</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>copy-resources</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.basedir}/web</outputDirectory>
+							<resources>
+								<resource>
+									<directory>${reactui.dist}</directory>
+									<filtering>false</filtering>
+								</resource>
+							</resources>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>
