@@ -6,7 +6,7 @@
 - `name.abuchen.portfolio.tests/` and `name.abuchen.portfolio.ui.tests/` provide JUnit plug-in tests.
 - `portfolio-app/` is the Maven/Tycho build entry point with `portfolio-app/pom.xml`.
 - `portfolio-product/` packages the application; `portfolio-target-definition/` defines the target platform.
-- `/` holds the Eclipse RCP UI layer (views, dialogs, editors, handlers).
+
 
 ## Build, Test, and Development Commands
 - `mvn -f portfolio-app/pom.xml clean verify -Plocal-dev` runs the full Tycho build.
