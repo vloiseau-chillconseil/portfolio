@@ -9,6 +9,9 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.jface.preference.IPreferenceStore;
 
@@ -20,6 +23,7 @@ import com.sun.net.httpserver.HttpServer;
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
 import graphql.GraphQL;
+import graphql.execution.SubscriptionExecutionStrategy;
 import io.leangen.graphql.GraphQLSchemaGenerator;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -27,12 +31,16 @@ import jakarta.inject.Inject;
 import name.abuchen.portfolio.ui.PortfolioPlugin;
 import name.abuchen.portfolio.ui.UIConstants;
 import name.abuchen.portfolio.ui.editor.ClientInputFactory;
+import org.reactivestreams.Publisher;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
 
 public class GraphQLServerAddon
 {
     private static final String DEFAULT_HOST = "0.0.0.0";
     private static final int DEFAULT_PORT = 7524;
     private static final String CORS_ALLOWED_ORIGIN = "capacitor://localhost";
+    private static final String CORS_ALLOWED_ORIGIN_DEV = "http://localhost:5173";
 
     private final Gson gson = new Gson();
 
@@ -41,6 +49,7 @@ public class GraphQLServerAddon
 
     private HttpServer server;
     private ExecutorService executor;
+    private GraphQL graphQL;
 
     @PostConstruct
     public void start()
@@ -54,10 +63,12 @@ public class GraphQLServerAddon
             var schema = new GraphQLSchemaGenerator() //
                             .withOperationsFromSingleton(new PortfolioGraphQLQueries(clientInputFactory)) //
                             .generate();
-            var graphQL = GraphQL.newGraphQL(schema).build();
+            graphQL = GraphQL.newGraphQL(schema).subscriptionExecutionStrategy(new SubscriptionExecutionStrategy())
+                            .build();
 
             server = HttpServer.create(new InetSocketAddress(config.host(), config.port()), 0);
-            server.createContext("/graphql", exchange -> handleRequest(exchange, graphQL));
+            server.createContext("/graphql", this::handleRequest);
+            server.createContext("/graphql/sse", this::handleGraphQlSse);
             server.createContext("/graphiql", this::handleGraphiQL);
             server.createContext("/healthcheck", this::handleHealthcheck);
             server.createContext("/", this::handleStatic);
@@ -91,9 +102,11 @@ public class GraphQLServerAddon
             executor.shutdownNow();
             executor = null;
         }
+
+        graphQL = null;
     }
 
-    private void handleRequest(HttpExchange exchange, GraphQL graphQL) throws IOException
+    private void handleRequest(HttpExchange exchange) throws IOException
     {
         if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod()))
         {
@@ -169,6 +182,138 @@ public class GraphQLServerAddon
         sendHtml(exchange, 200, graphiqlHtml());
     }
 
+    private void handleGraphQlSse(HttpExchange exchange) throws IOException
+    {
+        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod()))
+        {
+            applyCorsHeaders(exchange);
+            exchange.sendResponseHeaders(204, -1);
+            return;
+        }
+
+        if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())
+                        && !"POST".equalsIgnoreCase(exchange.getRequestMethod()))
+        {
+            sendPlainText(exchange, 405, "Only GET/POST is supported");
+            return;
+        }
+
+        if (graphQL == null)
+        {
+            sendPlainText(exchange, 500, "GraphQL not initialized");
+            return;
+        }
+
+        GraphQlRequest request = parseGraphQlSseRequest(exchange);
+        if (request == null || request.query() == null || request.query().isBlank())
+        {
+            sendPlainText(exchange, 400, "Missing GraphQL query");
+            return;
+        }
+
+        ExecutionInput input = ExecutionInput.newExecutionInput() //
+                        .query(request.query()) //
+                        .operationName(request.operationName()) //
+                        .variables(request.variables()) //
+                        .build();
+        ExecutionResult executionResult = graphQL.execute(input);
+        Object data = executionResult.getData();
+        if (!(data instanceof Publisher<?> publisher))
+        {
+            if (executionResult.getErrors().isEmpty())
+            {
+                sendPlainText(exchange, 400, "Query is not a subscription");
+            }
+            else
+            {
+                sendPlainText(exchange, 400, gson.toJson(executionResult.toSpecification()));
+            }
+            return;
+        }
+
+        applyCorsHeaders(exchange);
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=UTF-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+        exchange.getResponseHeaders().set("Connection", "keep-alive");
+        exchange.sendResponseHeaders(200, 0);
+
+        var output = exchange.getResponseBody();
+        var closed = new AtomicBoolean(false);
+        var done = new CountDownLatch(1);
+        var subscriptionRef = new AtomicReference<Subscription>();
+
+        try
+        {
+            @SuppressWarnings("unchecked")
+            Publisher<ExecutionResult> executionPublisher = (Publisher<ExecutionResult>) publisher;
+            executionPublisher.subscribe(new Subscriber<ExecutionResult>()
+            {
+                @Override
+                public void onSubscribe(Subscription subscription)
+                {
+                    subscriptionRef.set(subscription);
+                    subscription.request(Long.MAX_VALUE);
+                }
+
+                @Override
+                public void onNext(ExecutionResult result)
+                {
+                    if (closed.get())
+                        return;
+                    try
+                    {
+                        sendSseEvent(output, "next", gson.toJson(result.toSpecification()));
+                    }
+                    catch (IOException e)
+                    {
+                        closed.set(true);
+                        Subscription current = subscriptionRef.get();
+                        if (current != null)
+                            current.cancel();
+                    }
+                }
+
+                @Override
+                public void onError(Throwable error)
+                {
+                    try
+                    {
+                        sendSseEvent(output, "next", gson.toJson(Map.of("errors",
+                                        new Object[] { Map.of("message", error.getMessage()) })));
+                    }
+                    catch (IOException ignore)
+                    {
+                        // ignore
+                    }
+                    done.countDown();
+                }
+
+                @Override
+                public void onComplete()
+                {
+                    done.countDown();
+                }
+            });
+            done.await();
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+        }
+        finally
+        {
+            try
+            {
+                sendSseEvent(output, "complete", null);
+            }
+            catch (IOException ignore)
+            {
+                // ignore
+            }
+            output.close();
+        }
+    }
+
     private void handleHealthcheck(HttpExchange exchange) throws IOException
     {
         if (!"GET".equalsIgnoreCase(exchange.getRequestMethod()))
@@ -177,6 +322,7 @@ public class GraphQLServerAddon
             return;
         }
 
+        applyCorsHeaders(exchange);
         String version = PortfolioPlugin.getDefault().getBundle().getVersion().toString();
         sendPlainText(exchange, 200, version);
     }
@@ -398,9 +544,102 @@ public class GraphQLServerAddon
 
     private void applyCorsHeaders(HttpExchange exchange)
     {
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", CORS_ALLOWED_ORIGIN);
-        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, OPTIONS");
+        String origin = exchange.getRequestHeaders().getFirst("Origin");
+        if (CORS_ALLOWED_ORIGIN.equals(origin) || CORS_ALLOWED_ORIGIN_DEV.equals(origin))
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", origin);
+        else
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", CORS_ALLOWED_ORIGIN);
+        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Credentials", "true");
+    }
+
+    private String getQueryParam(HttpExchange exchange, String name)
+    {
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query == null || query.isBlank())
+            return null;
+        for (String pair : query.split("&"))
+        {
+            int idx = pair.indexOf('=');
+            if (idx <= 0)
+                continue;
+            String key = URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8);
+            if (!name.equals(key))
+                continue;
+            return URLDecoder.decode(pair.substring(idx + 1), StandardCharsets.UTF_8);
+        }
+        return null;
+    }
+
+    private void sendSseEvent(OutputStream output, String event, String data) throws IOException
+    {
+        String payload = data != null
+                        ? "event: " + event + "\n" + "data: " + data + "\n\n"
+                        : "event: " + event + "\n\n";
+        output.write(payload.getBytes(StandardCharsets.UTF_8));
+        output.flush();
+    }
+
+    private GraphQlRequest parseGraphQlSseRequest(HttpExchange exchange) throws IOException
+    {
+        if ("GET".equalsIgnoreCase(exchange.getRequestMethod()))
+        {
+            String query = getQueryParam(exchange, "query");
+            String operationName = getQueryParam(exchange, "operationName");
+            Map<String, Object> variables = parseVariables(getQueryParam(exchange, "variables"));
+            return new GraphQlRequest(query, operationName, variables);
+        }
+
+        String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        Map<String, Object> payload;
+        try
+        {
+            payload = gson.fromJson(body, Map.class);
+        }
+        catch (JsonSyntaxException e)
+        {
+            return null;
+        }
+
+        if (payload == null)
+            return null;
+
+        String query = payload.get("query") != null ? String.valueOf(payload.get("query")) : null;
+        String operationName = payload.get("operationName") != null ? String.valueOf(payload.get("operationName"))
+                        : null;
+        Map<String, Object> variables = parseVariables(payload.get("variables"));
+        return new GraphQlRequest(query, operationName, variables);
+    }
+
+    private Map<String, Object> parseVariables(Object variablesRaw)
+    {
+        if (variablesRaw == null)
+            return Collections.emptyMap();
+        if (variablesRaw instanceof Map<?, ?> raw)
+        {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> casted = (Map<String, Object>) raw;
+            return casted;
+        }
+        if (variablesRaw instanceof String raw)
+        {
+            try
+            {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> casted = (Map<String, Object>) gson.fromJson(raw, Map.class);
+                return casted != null ? casted : Collections.emptyMap();
+            }
+            catch (JsonSyntaxException e)
+            {
+                return Collections.emptyMap();
+            }
+        }
+        return Collections.emptyMap();
+    }
+
+    private record GraphQlRequest(String query, String operationName, Map<String, Object> variables)
+    {
     }
 
     private record GraphQLConfig(boolean enabled, String host, int port)

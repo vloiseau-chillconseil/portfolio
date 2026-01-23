@@ -55,6 +55,11 @@ public class PriceUpdateProgress // NOSONAR
         latestJobs.put(client, job);
     }
 
+    public boolean hasActiveJob(Client client)
+    {
+        return latestJobs.containsKey(client);
+    }
+
     public boolean isCurrent(UpdatePricesJob job)
     {
         return job.equals(latestJobs.get(job.getClient()));

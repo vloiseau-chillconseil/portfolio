@@ -2,21 +2,32 @@ package name.vloiseau.portfolio.graphql;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.leangen.graphql.annotations.GraphQLArgument;
+import io.leangen.graphql.annotations.GraphQLMutation;
 import io.leangen.graphql.annotations.GraphQLQuery;
+import io.leangen.graphql.annotations.GraphQLSubscription;
 import name.abuchen.portfolio.model.Client;
+import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
+import name.abuchen.portfolio.snapshot.ClientSnapshot;
 import name.abuchen.portfolio.snapshot.PerformanceIndex;
 import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot;
 import name.abuchen.portfolio.ui.editor.ClientInput;
 import name.abuchen.portfolio.ui.editor.ClientInputFactory;
+import name.abuchen.portfolio.ui.jobs.priceupdate.PriceUpdateProgress;
+import name.abuchen.portfolio.ui.jobs.priceupdate.PriceUpdateSnapshot;
+import name.abuchen.portfolio.ui.jobs.priceupdate.UpdatePricesJob;
 import name.abuchen.portfolio.ui.util.ClientFilterMenu;
 import name.abuchen.portfolio.util.Interval;
+import reactor.core.publisher.Flux;
 
 public class PortfolioGraphQLQueries
 {
@@ -106,6 +117,98 @@ public class PortfolioGraphQLQueries
         return points;
     }
 
+    @GraphQLMutation(name = "updateQuotes")
+    public UpdateQuotesResult updateQuotes(@GraphQLArgument(name = "clientId") String clientId,
+                    @GraphQLArgument(name = "scope") UpdateQuotesScope scope)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return new UpdateQuotesResult(false, 0);
+
+        Client client = input.get().getClient();
+        UpdateQuotesScope effectiveScope = scope != null ? scope : UpdateQuotesScope.ALL;
+
+        if (PriceUpdateProgress.getInstance().hasActiveJob(client))
+            throw new IllegalStateException("Quote update already running");
+
+        int count;
+        switch (effectiveScope)
+        {
+            case ACTIVE:
+                count = (int) client.getSecurities().stream().filter(s -> !s.isRetired()).count();
+                new UpdatePricesJob(client, s -> !s.isRetired(), EnumSet.allOf(UpdatePricesJob.Target.class))
+                                .schedule();
+                break;
+            case HOLDINGS:
+                var converter = new CurrencyConverterImpl(input.get().getExchangeRateProviderFacory(),
+                                client.getBaseCurrency());
+                var snapshot = ClientSnapshot.create(client, converter, LocalDate.now());
+                List<Security> securities = snapshot.getJointPortfolio().getPositions().stream() //
+                                .map(position -> position.getSecurity()) //
+                                .distinct() //
+                                .toList();
+                count = securities.size();
+                new UpdatePricesJob(client, securities).schedule();
+                break;
+            case ALL:
+            default:
+                count = client.getSecurities().size();
+                new UpdatePricesJob(client, EnumSet.allOf(UpdatePricesJob.Target.class)).schedule();
+                break;
+        }
+
+        return new UpdateQuotesResult(true, count);
+    }
+
+    @GraphQLSubscription(name = "quoteUpdates")
+    public Flux<QuoteUpdateProgress> quoteUpdates(@GraphQLArgument(name = "clientId") String clientId)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return Flux.error(new IllegalArgumentException("Unknown clientId"));
+
+        var client = input.get().getClient();
+        return Flux.create(sink -> {
+            AtomicBoolean done = new AtomicBoolean(false);
+
+            AtomicReference<PriceUpdateProgress.Listener> listenerRef = new AtomicReference<>();
+            PriceUpdateProgress.Listener listener = snapshot -> {
+                if (done.get())
+                    return;
+                sink.next(new QuoteUpdateProgress(snapshot));
+                if (snapshot.getTaskCount() > 0 && snapshot.getCompletedTaskCount() >= snapshot.getTaskCount())
+                {
+                    if (done.compareAndSet(false, true))
+                    {
+                        PriceUpdateProgress.Listener current = listenerRef.get();
+                        if (current != null)
+                            PriceUpdateProgress.getInstance().unregister(client, current);
+                        sink.complete();
+                    }
+                }
+            };
+            listenerRef.set(listener);
+
+            PriceUpdateProgress.getInstance().register(client, listener);
+            sink.onCancel(() -> {
+                if (done.compareAndSet(false, true))
+                {
+                    PriceUpdateProgress.Listener current = listenerRef.get();
+                    if (current != null)
+                        PriceUpdateProgress.getInstance().unregister(client, current);
+                }
+            });
+            sink.onDispose(() -> {
+                if (done.compareAndSet(false, true))
+                {
+                    PriceUpdateProgress.Listener current = listenerRef.get();
+                    if (current != null)
+                        PriceUpdateProgress.getInstance().unregister(client, current);
+                }
+            });
+        });
+    }
+
     private ClientInfo toClientInfo(ClientInput input)
     {
         Client client = input.getClient();
@@ -131,6 +234,67 @@ public class PortfolioGraphQLQueries
     private String clientId(ClientInput input)
     {
         return input.getFile() != null ? input.getFile().getAbsolutePath() : input.getLabel();
+    }
+
+    public enum UpdateQuotesScope
+    {
+        ALL, ACTIVE, HOLDINGS
+    }
+
+    public static final class UpdateQuotesResult
+    {
+        private final boolean scheduled;
+        private final int securityCount;
+
+        public UpdateQuotesResult(boolean scheduled, int securityCount)
+        {
+            this.scheduled = scheduled;
+            this.securityCount = securityCount;
+        }
+
+        @GraphQLQuery
+        public boolean scheduled()
+        {
+            return scheduled;
+        }
+
+        @GraphQLQuery
+        public int securityCount()
+        {
+            return securityCount;
+        }
+    }
+
+    public static final class QuoteUpdateProgress
+    {
+        private final long timestamp;
+        private final int taskCount;
+        private final int completedTaskCount;
+
+        public QuoteUpdateProgress(PriceUpdateSnapshot snapshot)
+        {
+            this.timestamp = snapshot.getTimestamp();
+            this.taskCount = snapshot.getTaskCount();
+            this.completedTaskCount = snapshot.getCompletedTaskCount();
+        }
+
+        @GraphQLQuery
+        public long timestamp()
+        {
+            return timestamp;
+        }
+
+        @GraphQLQuery
+        public int taskCount()
+        {
+            return taskCount;
+        }
+
+        @GraphQLQuery
+        public int completedTaskCount()
+        {
+            return completedTaskCount;
+        }
     }
 
     public static final class ClientInfo

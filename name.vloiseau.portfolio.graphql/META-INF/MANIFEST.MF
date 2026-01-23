@@ -25,7 +25,11 @@ Import-Package: com.google.gson,
  name.abuchen.portfolio.snapshot,
  org.eclipse.core.commands.common,
  org.eclipse.core.runtime,
+ org.eclipse.core.runtime.jobs,
  org.eclipse.e4.core.di.annotations,
  org.eclipse.jface.preference,
  org.osgi.framework,
- name.abuchen.portfolio.ui.util
+ name.abuchen.portfolio.ui.util,
+ org.reactivestreams,
+ reactor.core,
+ reactor.core.publisher
