@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Input, Space, Typography, message } from "antd";
 import {
-  getConnectUrl,
   getDefaultGraphqlUrl,
-  getGraphqlUrl,
+  getEffectiveGraphqlBaseUrl,
+  getStoredGraphqlBaseUrl,
+  getHealthcheckUrl,
+  normalizeGraphqlBaseUrl,
   setGraphqlUrl,
 } from "../services/graphqlConfig";
 
@@ -13,7 +15,7 @@ const ConnectionPage = () => {
 
   useEffect(() => {
     const loadGraphqlUrl = async () => {
-      const storedUrl = await getGraphqlUrl();
+      const storedUrl = await getStoredGraphqlBaseUrl();
       setGraphqlUrlState(storedUrl);
       setIsLoading(false);
     };
@@ -22,20 +24,47 @@ const ConnectionPage = () => {
   }, []);
 
   const handleSave = async () => {
-    await setGraphqlUrl(graphqlUrl);
-    message.success("URL GraphQL enregistrée");
-  };
+    const candidateUrl = normalizeGraphqlBaseUrl(graphqlUrl);
+    const baseUrl = candidateUrl || (await getEffectiveGraphqlBaseUrl());
+    const healthcheckUrl = getHealthcheckUrl(baseUrl);
 
-  const handleOpenConnect = async () => {
-    const storedUrl = graphqlUrl.trim() ? graphqlUrl : await getGraphqlUrl();
-    const connectUrl = getConnectUrl(storedUrl);
-
-    if (!connectUrl) {
-      message.error("Renseignez une URL GraphQL avant d'ouvrir /connect");
+    if (!healthcheckUrl) {
+      message.error("Renseignez une URL GraphQL avant d'enregistrer");
       return;
     }
 
-    window.location.assign(connectUrl);
+    try {
+      const response = await fetch(healthcheckUrl, { credentials: "include" });
+
+      if (!response.ok) {
+        message.error("Impossible de joindre le serveur configuré");
+        return;
+      }
+
+      let version = "";
+
+      try {
+        const data = await response.clone().json();
+        if (typeof data === "string") {
+          version = data;
+        } else if (data && typeof data === "object" && "version" in data) {
+          version = String((data as { version: string }).version);
+        }
+      } catch {
+        const text = await response.text();
+        version = text.trim();
+      }
+
+      if (!version) {
+        message.error("Serveur accessible mais version introuvable");
+        return;
+      }
+
+      await setGraphqlUrl(candidateUrl);
+      message.success(`Serveur ok : version ${version}`);
+    } catch {
+      message.error("Impossible de joindre le serveur configuré");
+    }
   };
 
   return (
@@ -50,14 +79,9 @@ const ConnectionPage = () => {
           placeholder={getDefaultGraphqlUrl()}
           disabled={isLoading}
         />
-        <Space>
-          <Button type="primary" onClick={handleSave} disabled={isLoading}>
-            Enregistrer
-          </Button>
-          <Button onClick={handleOpenConnect} disabled={isLoading}>
-            Ouvrir /connect
-          </Button>
-        </Space>
+        <Button type="primary" onClick={handleSave} disabled={isLoading}>
+          Enregistrer
+        </Button>
       </Space>
     </Card>
   );
