@@ -59,6 +59,7 @@ public class GraphQLServerAddon
             server = HttpServer.create(new InetSocketAddress(config.host(), config.port()), 0);
             server.createContext("/graphql", exchange -> handleRequest(exchange, graphQL));
             server.createContext("/graphiql", this::handleGraphiQL);
+            server.createContext("/healthcheck", this::handleHealthcheck);
             server.createContext("/", this::handleStatic);
             server.createContext("/assets", this::handleStatic);
             executor = Executors.newSingleThreadExecutor(r -> {
@@ -166,6 +167,18 @@ public class GraphQLServerAddon
         }
 
         sendHtml(exchange, 200, graphiqlHtml());
+    }
+
+    private void handleHealthcheck(HttpExchange exchange) throws IOException
+    {
+        if (!"GET".equalsIgnoreCase(exchange.getRequestMethod()))
+        {
+            sendPlainText(exchange, 405, "Only GET is supported");
+            return;
+        }
+
+        String version = PortfolioPlugin.getDefault().getBundle().getVersion().toString();
+        sendPlainText(exchange, 200, version);
     }
 
     private void sendPlainText(HttpExchange exchange, int status, String message) throws IOException
