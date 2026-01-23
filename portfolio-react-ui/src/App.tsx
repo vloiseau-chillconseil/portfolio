@@ -1,10 +1,17 @@
 import { useMemo, useState } from "react";
 import { Layout, Menu, Button, Drawer, Grid, Typography } from "antd";
 import type { MenuProps } from "antd";
-import { HomeOutlined, LineChartOutlined, MenuOutlined } from "@ant-design/icons";
+import {
+  HomeOutlined,
+  LineChartOutlined,
+  MenuOutlined,
+  LinkOutlined,
+} from "@ant-design/icons";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import PerformancePage from "./pages/PerformancePage";
+import ConnectionPage from "./pages/ConnectionPage";
+import ConnectPage from "./pages/ConnectPage";
 
 const { Content, Sider, Header } = Layout;
 const { useBreakpoint } = Grid;
@@ -12,6 +19,7 @@ const { useBreakpoint } = Grid;
 const menuItems: MenuProps["items"] = [
   { key: "/", label: "Accueil", icon: <HomeOutlined /> },
   { key: "/performances", label: "Performances", icon: <LineChartOutlined /> },
+  { key: "/connection", label: "Connexion", icon: <LinkOutlined /> },
 ];
 
 const App = () => {
@@ -23,6 +31,9 @@ const App = () => {
   const selectedKey = useMemo(() => {
     if (location.pathname.startsWith("/performances")) {
       return "/performances";
+    }
+    if (location.pathname.startsWith("/connection")) {
+      return "/connection";
     }
     return "/";
   }, [location.pathname]);
@@ -60,6 +71,8 @@ const App = () => {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/performances" element={<PerformancePage />} />
+            <Route path="/connection" element={<ConnectionPage />} />
+            <Route path="/connect" element={<ConnectPage />} />
           </Routes>
         </Content>
       </Layout>
