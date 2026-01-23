@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { apolloClient } from "../services/apolloClient";
 
 type ClientInfo = {
   id: string | null;
@@ -22,6 +23,7 @@ export const CurrentClientProvider = ({
   children,
 }: CurrentClientProviderProps) => {
   const [currentClient, setCurrentClient] = useState<ClientInfo | null>(null);
+  const previousClientIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("currentClient");
@@ -41,6 +43,17 @@ export const CurrentClientProvider = ({
     }
     localStorage.setItem("currentClient", JSON.stringify(currentClient));
   }, [currentClient]);
+
+  useEffect(() => {
+    const previousClientId = previousClientIdRef.current;
+    const nextClientId = currentClient?.id ?? null;
+
+    if (previousClientId && previousClientId !== nextClientId) {
+      void apolloClient.resetStore();
+    }
+
+    previousClientIdRef.current = nextClientId;
+  }, [currentClient?.id]);
 
   const value = useMemo(
     () => ({ currentClient, setCurrentClient }),
