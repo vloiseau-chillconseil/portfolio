@@ -73,7 +73,7 @@ public class GraphQLServerAddon
             server.createContext("/healthcheck", this::handleHealthcheck);
             server.createContext("/", this::handleStatic);
             server.createContext("/assets", this::handleStatic);
-            executor = Executors.newSingleThreadExecutor(r -> {
+            executor = Executors.newCachedThreadPool(r -> {
                 Thread thread = new Thread(r, "PortfolioGraphQL");
                 thread.setDaemon(true);
                 return thread;

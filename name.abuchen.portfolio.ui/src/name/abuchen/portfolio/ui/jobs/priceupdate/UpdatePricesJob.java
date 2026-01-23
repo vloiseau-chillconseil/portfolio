@@ -182,6 +182,9 @@ public class UpdatePricesJob extends AbstractClientJob
             if (request.getAndResetDirty())
                 request.getClient().markDirty();
             fireSnapshot(request);
+            Display.getDefault()
+                            .asyncExec(() -> PriceUpdateProgress.getInstance().notifyFinished(this,
+                                            request.getStatusSnapshot()));
         }
 
         return Status.OK_STATUS;
