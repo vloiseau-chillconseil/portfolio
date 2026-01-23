@@ -6,7 +6,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-current_version="$(rg -m 1 "<version>.*</version>" portfolio-app/pom.xml | sed -E 's/.*<version>([^<]+)<\\/version>.*/\\1/')"
+current_version="$(rg -m 1 "<version>.*</version>" portfolio-app/pom.xml | sed -E 's/.*<version>([^<]+)<\/version>.*/\1/')"
 
 if [[ "${current_version}" != *"vloiseau-"* ]]; then
   echo "Current version does not include a vloiseau build suffix: ${current_version}"
