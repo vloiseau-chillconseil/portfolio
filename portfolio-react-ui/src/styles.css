@@ -30,6 +30,11 @@ body {
   margin: 0;
 }
 
+.app-header-progress {
+  margin-left: auto;
+  width: 200px;
+}
+
 .app-content {
   padding: 24px;
 }

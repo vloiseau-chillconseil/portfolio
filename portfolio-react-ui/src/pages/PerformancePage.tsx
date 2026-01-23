@@ -1,18 +1,22 @@
-import { gql, useQuery } from "@apollo/client";
+import { gql, useMutation, useQuery } from "@apollo/client";
 import { Capacitor } from "@capacitor/core";
 import {
   Card,
   DatePicker,
+  Dropdown,
   Select,
   Space,
   Typography,
   Alert,
   Spin,
+  message,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { useCurrentClient } from "../state/currentClientContext";
+import { SyncOutlined } from "@ant-design/icons";
+import type { MenuProps } from "antd";
 
 const CLIENT_FILTERS_QUERY = gql`
   query ClientFilters($clientId: String) {
@@ -61,6 +65,15 @@ const CLIENT_FILTER_ACCUMULATED_QUERY = gql`
         amount
         currencyCode
       }
+    }
+  }
+`;
+
+const UPDATE_QUOTES_MUTATION = gql`
+  mutation UpdateQuotes($clientId: String, $scope: UpdateQuotesScope) {
+    updateQuotes(clientId: $clientId, scope: $scope) {
+      scheduled
+      securityCount
     }
   }
 `;
@@ -184,6 +197,10 @@ const PerformancePage = () => {
     skip: !shouldFetch,
   });
 
+  const [updateQuotes, updateQuotesState] = useMutation<{
+    updateQuotes: { scheduled: boolean; securityCount: number | null } | null;
+  }>(UPDATE_QUOTES_MUTATION);
+
   const chartData = useMemo(() => {
     const points = accumulatedQuery.data?.clientFilterAccumulatedDelta ?? [];
     return points.map((point) => ({
@@ -200,6 +217,41 @@ const PerformancePage = () => {
   const delta = deltaQuery.data?.clientFilterDelta;
   const nativeStartValue = nativeStartDate || "";
   const nativeEndValue = nativeEndDate || "";
+  const updateQuotesLoading = updateQuotesState.loading;
+
+  const updateQuotesItems: MenuProps["items"] = [
+    { key: "ALL", label: "Tous les titres" },
+    { key: "ACTIVE", label: "Titres actifs" },
+    { key: "HOLDINGS", label: "Titres détenus" },
+  ];
+
+  const handleUpdateQuotes: MenuProps["onClick"] = async ({ key }) => {
+    if (!currentClient?.id) {
+      message.info("Sélectionnez un client pour actualiser les titres.");
+      return;
+    }
+
+    try {
+      const { data } = await updateQuotes({
+        variables: {
+          clientId: currentClient.id,
+          scope: key,
+        },
+      });
+      const result = data?.updateQuotes;
+
+      if (!result?.scheduled) {
+        message.warning("Aucune mise à jour planifiée.");
+        return;
+      }
+
+      message.success(
+        `Actualisation lancée (${result.securityCount ?? 0} titres).`
+      );
+    } catch {
+      message.error("Erreur lors de l'actualisation des titres.");
+    }
+  };
 
   const updateNativeRange = (startValue: string, endValue: string) => {
     if (startValue && endValue) {
@@ -246,7 +298,19 @@ const PerformancePage = () => {
 
   return (
     <Space direction="vertical" size="large" className="page-stack">
-      <Card title="Paramètres">
+      <Card
+        title="Paramètres"
+        extra={
+          <Dropdown.Button
+            menu={{ items: updateQuotesItems, onClick: handleUpdateQuotes }}
+            icon={<SyncOutlined spin={updateQuotesLoading} />}
+            loading={updateQuotesLoading}
+            disabled={!currentClient}
+          >
+            Actualiser
+          </Dropdown.Button>
+        }
+      >
         <Space direction="vertical" size="middle" className="form-stack">
           <Space direction="vertical" size={4}>
             <Typography.Text>Plage de dates</Typography.Text>

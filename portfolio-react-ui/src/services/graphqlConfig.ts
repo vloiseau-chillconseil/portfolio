@@ -36,6 +36,25 @@ export const getGraphqlUrl = async () => {
   return `${baseUrl.replace(/\/$/, "")}/graphql`;
 };
 
+export const getGraphqlWsUrl = async () => {
+  const graphqlUrl = await getGraphqlUrl();
+
+  if (graphqlUrl.startsWith("https://")) {
+    return graphqlUrl.replace(/^https:/, "wss:");
+  }
+
+  if (graphqlUrl.startsWith("http://")) {
+    return graphqlUrl.replace(/^http:/, "ws:");
+  }
+
+  return graphqlUrl;
+};
+
+export const getGraphqlSseUrl = async () => {
+  const graphqlUrl = await getGraphqlUrl();
+  return `${graphqlUrl.replace(/\/$/, "")}/sse`;
+};
+
 export const setGraphqlUrl = async (url: string) =>
   Preferences.set({ key: GRAPHQL_BASE_URL_KEY, value: normalizeGraphqlBaseUrl(url) });
 

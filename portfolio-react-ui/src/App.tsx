@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { Layout, Menu, Button, Drawer, Grid, Typography } from "antd";
+import { useEffect, useMemo, useState } from "react";
+import { gql, useSubscription } from "@apollo/client";
+import { Layout, Menu, Button, Drawer, Grid, Typography, Progress } from "antd";
 import type { MenuProps } from "antd";
 import {
   HomeOutlined,
@@ -12,9 +13,20 @@ import HomePage from "./pages/HomePage";
 import PerformancePage from "./pages/PerformancePage";
 import ConnectionPage from "./pages/ConnectionPage";
 import ConnectPage from "./pages/ConnectPage";
+import { useCurrentClient } from "./state/currentClientContext";
 
 const { Content, Sider, Header } = Layout;
 const { useBreakpoint } = Grid;
+
+const QUOTE_UPDATES_SUBSCRIPTION = gql`
+  subscription QuoteUpdates($clientId: String) {
+    quoteUpdates(clientId: $clientId) {
+      completedTaskCount
+      taskCount
+      timestamp
+    }
+  }
+`;
 
 const menuItems: MenuProps["items"] = [
   { key: "/", label: "Accueil", icon: <HomeOutlined /> },
@@ -23,10 +35,47 @@ const menuItems: MenuProps["items"] = [
 ];
 
 const App = () => {
+  const { currentClient } = useCurrentClient();
   const navigate = useNavigate();
   const location = useLocation();
   const screens = useBreakpoint();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [quoteProgress, setQuoteProgress] = useState<{
+    completedTaskCount: number;
+    taskCount: number;
+    timestamp: number;
+  } | null>(null);
+
+  const { data: quoteUpdateData } = useSubscription<{
+    quoteUpdates: {
+      completedTaskCount: number;
+      taskCount: number;
+      timestamp: number;
+    } | null;
+  }>(QUOTE_UPDATES_SUBSCRIPTION, {
+    variables: { clientId: currentClient?.id ?? null },
+    skip: !currentClient?.id,
+  });
+
+  useEffect(() => {
+    if (quoteUpdateData?.quoteUpdates) {
+      setQuoteProgress(quoteUpdateData.quoteUpdates);
+    }
+  }, [quoteUpdateData]);
+
+  const progressPercent = useMemo(() => {
+    const taskCount = quoteProgress?.taskCount ?? 0;
+    const completed = quoteProgress?.completedTaskCount ?? 0;
+    if (!taskCount) {
+      return 0;
+    }
+    return Math.min(100, Math.round((completed / taskCount) * 100));
+  }, [quoteProgress]);
+
+  const isQuoteActive = Boolean(
+    quoteProgress?.taskCount &&
+      quoteProgress.completedTaskCount < quoteProgress.taskCount
+  );
 
   const selectedKey = useMemo(() => {
     if (location.pathname.startsWith("/performances")) {
@@ -66,6 +115,14 @@ const App = () => {
           <Typography.Title level={4} className="app-title">
             Portfolio React
           </Typography.Title>
+          <div className="app-header-progress">
+            <Progress
+              percent={progressPercent}
+              showInfo={false}
+              size="small"
+              strokeColor={isQuoteActive ? "#1677ff" : "#bfbfbf"}
+            />
+          </div>
         </Header>
         <Content className="app-content">
           <Routes>

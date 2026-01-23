@@ -25,9 +25,17 @@ type DeltaPoint {
   value: MoneyInfo
 }
 
+"""A 64-bit signed integer"""
+scalar Long
+
 type MoneyInfo {
   amount: Float!
   currencyCode: String
+}
+
+"""Mutation root"""
+type Mutation {
+  updateQuotes(clientId: String, scope: UpdateQuotesScope): UpdateQuotesResult
 }
 
 """Query root"""
@@ -36,5 +44,27 @@ type Query {
   clients: [ClientInfo]
   clientFilterDelta(filterId: String, clientId: String, endDate: String, startDate: String): MoneyInfo
   clientFilters(clientId: String): [ClientFilterInfo]
+}
+
+type QuoteUpdateProgress {
+  completedTaskCount: Int!
+  taskCount: Int!
+  timestamp: Long!
+}
+
+"""Subscription root"""
+type Subscription {
+  quoteUpdates(clientId: String): QuoteUpdateProgress
+}
+
+type UpdateQuotesResult {
+  scheduled: Boolean!
+  securityCount: Int!
+}
+
+enum UpdateQuotesScope {
+  ACTIVE
+  ALL
+  HOLDINGS
 }
 
