@@ -178,6 +178,7 @@ const PerformancePage = () => {
       filterId: selectedFilterId,
       ...formattedDates,
     },
+    fetchPolicy: "network-only",
     skip: !shouldFetch,
   });
 
@@ -194,6 +195,7 @@ const PerformancePage = () => {
       filterId: selectedFilterId,
       ...formattedDates,
     },
+    fetchPolicy: "network-only",
     skip: !shouldFetch,
   });
 
@@ -248,6 +250,10 @@ const PerformancePage = () => {
       message.success(
         `Actualisation lancée (${result.securityCount ?? 0} titres).`
       );
+
+      if (shouldFetch) {
+        await Promise.all([deltaQuery.refetch(), accumulatedQuery.refetch()]);
+      }
     } catch {
       message.error("Erreur lors de l'actualisation des titres.");
     }
