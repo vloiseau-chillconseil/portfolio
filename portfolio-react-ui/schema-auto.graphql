@@ -38,11 +38,23 @@ type Mutation {
   updateQuotes(clientId: String, scope: UpdateQuotesScope): UpdateQuotesResult
 }
 
+type PortfolioSecurityPerformanceInfo {
+  delta: MoneyInfo
+  deltaPercent: Float!
+  portfolioId: String
+  portfolioName: String
+  referenceAccountId: String
+  referenceAccountName: String
+  securities: [SecurityPerformanceInfo]
+  startValue: MoneyInfo
+}
+
 """Query root"""
 type Query {
-  clientFilterAccumulatedDelta(filterId: String, clientId: String, endDate: String, startDate: String): [DeltaPoint]
+  clientFilterAccumulatedDelta(filterId: String, portfolioId: String, clientId: String, endDate: String, securityId: String, startDate: String): [DeltaPoint]
   clients: [ClientInfo]
   clientFilterDelta(filterId: String, clientId: String, endDate: String, startDate: String): MoneyInfo
+  portfolioSecurityPerformance(filterId: String, clientId: String, endDate: String, startDate: String): [PortfolioSecurityPerformanceInfo]
   clientFilters(clientId: String): [ClientFilterInfo]
 }
 
@@ -50,6 +62,14 @@ type QuoteUpdateProgress {
   completedTaskCount: Int!
   taskCount: Int!
   timestamp: Long!
+}
+
+type SecurityPerformanceInfo {
+  delta: MoneyInfo
+  deltaPercent: Float!
+  securityId: String
+  securityName: String
+  startValue: MoneyInfo
 }
 
 """Subscription root"""

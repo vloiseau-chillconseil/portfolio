@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -13,13 +14,20 @@ import io.leangen.graphql.annotations.GraphQLMutation;
 import io.leangen.graphql.annotations.GraphQLQuery;
 import io.leangen.graphql.annotations.GraphQLSubscription;
 import name.abuchen.portfolio.model.Client;
+import name.abuchen.portfolio.model.Portfolio;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
 import name.abuchen.portfolio.money.Money;
 import name.abuchen.portfolio.money.Values;
+import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot;
 import name.abuchen.portfolio.snapshot.ClientSnapshot;
 import name.abuchen.portfolio.snapshot.PerformanceIndex;
-import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot;
+import name.abuchen.portfolio.snapshot.filter.ClientSecurityFilter;
+import name.abuchen.portfolio.snapshot.filter.PortfolioClientFilter;
+import name.abuchen.portfolio.snapshot.filter.ReadOnlyAccount;
+import name.abuchen.portfolio.snapshot.filter.ReadOnlyPortfolio;
+import name.abuchen.portfolio.snapshot.security.SecurityPerformanceRecord;
+import name.abuchen.portfolio.snapshot.security.SecurityPerformanceSnapshot;
 import name.abuchen.portfolio.ui.editor.ClientInput;
 import name.abuchen.portfolio.ui.editor.ClientInputFactory;
 import name.abuchen.portfolio.ui.jobs.priceupdate.PriceUpdateProgress;
@@ -27,6 +35,7 @@ import name.abuchen.portfolio.ui.jobs.priceupdate.PriceUpdateSnapshot;
 import name.abuchen.portfolio.ui.jobs.priceupdate.UpdatePricesJob;
 import name.abuchen.portfolio.ui.util.ClientFilterMenu;
 import name.abuchen.portfolio.util.Interval;
+import name.abuchen.portfolio.util.TextUtil;
 import reactor.core.publisher.Flux;
 
 public class PortfolioGraphQLQueries
@@ -82,7 +91,9 @@ public class PortfolioGraphQLQueries
     public List<DeltaPoint> clientFilterAccumulatedDelta(@GraphQLArgument(name = "clientId") String clientId,
                     @GraphQLArgument(name = "filterId") String filterId,
                     @GraphQLArgument(name = "startDate") String startDate,
-                    @GraphQLArgument(name = "endDate") String endDate)
+                    @GraphQLArgument(name = "endDate") String endDate,
+                    @GraphQLArgument(name = "portfolioId") String portfolioId,
+                    @GraphQLArgument(name = "securityId") String securityId)
     {
         Optional<ClientInput> input = findClientInput(clientId);
         if (input.isEmpty())
@@ -91,17 +102,22 @@ public class PortfolioGraphQLQueries
         LocalDate start = LocalDate.parse(startDate);
         LocalDate end = LocalDate.parse(endDate);
 
-        ClientFilterMenu menu = new ClientFilterMenu(input.get().getClient(), input.get().getPreferenceStore());
-        Optional<ClientFilterMenu.Item> item = menu.getAllItems().filter(i -> i.getId().equals(filterId)).findFirst();
-        if (item.isEmpty())
-            return List.of();
+        Client filtered = input.get().getClient();
+        if (filterId != null)
+        {
+            ClientFilterMenu menu = new ClientFilterMenu(input.get().getClient(), input.get().getPreferenceStore());
+            Optional<ClientFilterMenu.Item> item = menu.getAllItems().filter(i -> i.getId().equals(filterId))
+                            .findFirst();
+            if (item.isEmpty())
+                return List.of();
 
-        Client filtered = item.get().getFilter().filter(input.get().getClient());
+            filtered = item.get().getFilter().filter(input.get().getClient());
+        }
         var converter = new CurrencyConverterImpl(input.get().getExchangeRateProviderFacory(),
                         input.get().getClient().getBaseCurrency());
 
-        List<Exception> warnings = new ArrayList<>();
-        PerformanceIndex index = PerformanceIndex.forClient(filtered, converter, Interval.of(start, end), warnings);
+        PerformanceIndex index = createPerformanceIndex(filtered, converter, Interval.of(start, end), portfolioId,
+                        securityId);
 
         LocalDate[] dates = index.getDates();
         double[] accumulated = index.getAccumulatedPercentage();
@@ -115,6 +131,47 @@ public class PortfolioGraphQLQueries
         }
 
         return points;
+    }
+
+    @GraphQLQuery(name = "portfolioSecurityPerformance")
+    public List<PortfolioSecurityPerformanceInfo> portfolioSecurityPerformance(
+                    @GraphQLArgument(name = "clientId") String clientId,
+                    @GraphQLArgument(name = "filterId") String filterId,
+                    @GraphQLArgument(name = "startDate") String startDate,
+                    @GraphQLArgument(name = "endDate") String endDate)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return List.of();
+
+        LocalDate start = LocalDate.parse(startDate);
+        LocalDate end = LocalDate.parse(endDate);
+
+        Client client = input.get().getClient();
+        if (filterId != null)
+        {
+            ClientFilterMenu menu = new ClientFilterMenu(client, input.get().getPreferenceStore());
+            Optional<ClientFilterMenu.Item> item = menu.getAllItems().filter(i -> i.getId().equals(filterId))
+                            .findFirst();
+            if (item.isEmpty())
+                return List.of();
+            client = item.get().getFilter().filter(client);
+        }
+
+        var converter = new CurrencyConverterImpl(input.get().getExchangeRateProviderFacory(),
+                        client.getBaseCurrency());
+
+        Client filteredClient = client;
+        List<PortfolioSecurityPerformanceInfo> results = new ArrayList<>();
+        results.add(toTotalPortfolioPerformanceInfo(filteredClient, converter, start, end));
+        results.addAll(filteredClient.getPortfolios().stream()
+                        .sorted((left, right) -> TextUtil.compare(left.getName(), right.getName()))
+                        .map(portfolio -> {
+                            Portfolio source = unwrapPortfolio(portfolio);
+                            return toPortfolioPerformanceInfo(portfolio, source, filteredClient, converter, start, end);
+                        })
+                        .toList());
+        return results;
     }
 
     @GraphQLMutation(name = "updateQuotes")
@@ -221,6 +278,53 @@ public class PortfolioGraphQLQueries
     {
         return clientInputFactory.listOpenClients().stream().filter(input -> clientId(input).equals(clientId))
                         .findFirst();
+    }
+
+    private Portfolio unwrapPortfolio(Portfolio portfolio)
+    {
+        return ReadOnlyPortfolio.unwrap(portfolio);
+    }
+
+    private name.abuchen.portfolio.model.Account unwrapAccount(name.abuchen.portfolio.model.Account account)
+    {
+        return ReadOnlyAccount.unwrap(account);
+    }
+
+    private PerformanceIndex createPerformanceIndex(Client client, CurrencyConverterImpl converter, Interval interval,
+                    String portfolioId, String securityId)
+    {
+        if (portfolioId == null && securityId == null)
+            return PerformanceIndex.forClient(client, converter, interval, new ArrayList<>());
+
+        if (portfolioId != null)
+        {
+            Portfolio portfolio = client.getPortfolios().stream()
+                            .filter(p -> portfolioId.equals(unwrapPortfolio(p).getUUID()))
+                            .findFirst()
+                            .orElse(null);
+            if (portfolio == null)
+                throw new IllegalArgumentException("Unknown portfolioId: " + portfolioId); //$NON-NLS-1$
+
+            if (securityId == null)
+                return PerformanceIndex.forPortfolio(client, converter, portfolio, interval, new ArrayList<>());
+
+            Security security = client.getSecurities().stream().filter(s -> securityId.equals(s.getUUID())).findFirst()
+                            .orElse(null);
+            if (security == null)
+                throw new IllegalArgumentException("Unknown securityId: " + securityId); //$NON-NLS-1$
+
+            Client portfolioFiltered = new PortfolioClientFilter(portfolio).filter(client);
+            Client securityFiltered = new ClientSecurityFilter(security).filter(portfolioFiltered);
+            return PerformanceIndex.forClient(securityFiltered, converter, interval, new ArrayList<>());
+        }
+
+        Security security = client.getSecurities().stream().filter(s -> securityId.equals(s.getUUID())).findFirst()
+                        .orElse(null);
+        if (security == null)
+            throw new IllegalArgumentException("Unknown securityId: " + securityId); //$NON-NLS-1$
+
+        Client securityFiltered = new ClientSecurityFilter(security).filter(client);
+        return PerformanceIndex.forClient(securityFiltered, converter, interval, new ArrayList<>());
     }
 
     private List<ClientFilterInfo> listClientFilters(ClientInput input)
@@ -415,5 +519,215 @@ public class PortfolioGraphQLQueries
         {
             return value;
         }
+    }
+
+    public static final class PortfolioSecurityPerformanceInfo
+    {
+        private final String portfolioId;
+        private final String portfolioName;
+        private final String referenceAccountId;
+        private final String referenceAccountName;
+        private final MoneyInfo startValue;
+        private final MoneyInfo delta;
+        private final double deltaPercent;
+        private final List<SecurityPerformanceInfo> securities;
+
+        public PortfolioSecurityPerformanceInfo(String portfolioId, String portfolioName, String referenceAccountId,
+                        String referenceAccountName, MoneyInfo startValue, MoneyInfo delta, double deltaPercent,
+                        List<SecurityPerformanceInfo> securities)
+        {
+            this.portfolioId = portfolioId;
+            this.portfolioName = portfolioName;
+            this.referenceAccountId = referenceAccountId;
+            this.referenceAccountName = referenceAccountName;
+            this.startValue = startValue;
+            this.delta = delta;
+            this.deltaPercent = deltaPercent;
+            this.securities = securities;
+        }
+
+        @GraphQLQuery
+        public String getPortfolioId()
+        {
+            return portfolioId;
+        }
+
+        @GraphQLQuery
+        public String getPortfolioName()
+        {
+            return portfolioName;
+        }
+
+        @GraphQLQuery
+        public String getReferenceAccountId()
+        {
+            return referenceAccountId;
+        }
+
+        @GraphQLQuery
+        public String getReferenceAccountName()
+        {
+            return referenceAccountName;
+        }
+
+        @GraphQLQuery
+        public MoneyInfo getStartValue()
+        {
+            return startValue;
+        }
+
+        @GraphQLQuery
+        public MoneyInfo getDelta()
+        {
+            return delta;
+        }
+
+        @GraphQLQuery
+        public double getDeltaPercent()
+        {
+            return deltaPercent;
+        }
+
+        @GraphQLQuery
+        public List<SecurityPerformanceInfo> getSecurities()
+        {
+            return securities;
+        }
+    }
+
+    public static final class SecurityPerformanceInfo
+    {
+        private final String securityId;
+        private final String securityName;
+        private final MoneyInfo startValue;
+        private final MoneyInfo delta;
+        private final double deltaPercent;
+
+        public SecurityPerformanceInfo(String securityId, String securityName, MoneyInfo startValue, MoneyInfo delta,
+                        double deltaPercent)
+        {
+            this.securityId = securityId;
+            this.securityName = securityName;
+            this.startValue = startValue;
+            this.delta = delta;
+            this.deltaPercent = deltaPercent;
+        }
+
+        @GraphQLQuery
+        public String getSecurityId()
+        {
+            return securityId;
+        }
+
+        @GraphQLQuery
+        public String getSecurityName()
+        {
+            return securityName;
+        }
+
+        @GraphQLQuery
+        public MoneyInfo getStartValue()
+        {
+            return startValue;
+        }
+
+        @GraphQLQuery
+        public MoneyInfo getDelta()
+        {
+            return delta;
+        }
+
+        @GraphQLQuery
+        public double getDeltaPercent()
+        {
+            return deltaPercent;
+        }
+    }
+
+    private PortfolioSecurityPerformanceInfo toPortfolioPerformanceInfo(Portfolio portfolio, Portfolio source,
+                    Client client, CurrencyConverterImpl converter, LocalDate startDate, LocalDate endDate)
+    {
+        Client filtered = new PortfolioClientFilter(portfolio).filter(client);
+        ClientSnapshot startSnapshot = ClientSnapshot.create(filtered, converter, startDate);
+        ClientSnapshot endSnapshot = ClientSnapshot.create(filtered, converter, endDate);
+        var interval = Interval.of(startDate, endDate);
+        SecurityPerformanceSnapshot performance = SecurityPerformanceSnapshot.create(filtered, converter, interval,
+                        startSnapshot, endSnapshot);
+
+        Map<Security, name.abuchen.portfolio.snapshot.SecurityPosition> startPositions = startSnapshot.getPortfolios()
+                        .stream()
+                        .findFirst()
+                        .map(snapshot -> snapshot.getPositionsBySecurity())
+                        .orElseGet(Map::of);
+
+        var termCurrency = converter.getTermCurrency();
+        var portfolioBase = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
+        var portfolioDelta = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
+
+        List<SecurityPerformanceInfo> securities = performance.getRecords().stream()
+                        .sorted((left, right) -> TextUtil.compare(left.getSecurityName(), right.getSecurityName()))
+                        .map(record -> toSecurityPerformanceInfo(record, startPositions, startDate, converter,
+                                        portfolioBase, portfolioDelta))
+                        .toList();
+
+        double portfolioPercent = portfolioBase.isZero() ? 0d
+                        : portfolioDelta.getAmount() * 100d / (double) portfolioBase.getAmount();
+
+        return new PortfolioSecurityPerformanceInfo(source.getUUID(), source.getName(),
+                        source.getReferenceAccount() != null ? unwrapAccount(source.getReferenceAccount()).getUUID()
+                                        : null,
+                        source.getReferenceAccount() != null ? unwrapAccount(source.getReferenceAccount()).getName()
+                                        : null,
+                        new MoneyInfo(portfolioBase.toMoney()), new MoneyInfo(portfolioDelta.toMoney()),
+                        portfolioPercent, securities);
+    }
+
+    private SecurityPerformanceInfo toSecurityPerformanceInfo(SecurityPerformanceRecord record,
+                    Map<Security, name.abuchen.portfolio.snapshot.SecurityPosition> startPositions,
+                    LocalDate startDate, CurrencyConverterImpl converter,
+                    name.abuchen.portfolio.money.MutableMoney portfolioBase,
+                    name.abuchen.portfolio.money.MutableMoney portfolioDelta)
+    {
+        Security security = record.getSecurity();
+        Money baseValue = Money.of(converter.getTermCurrency(), 0);
+
+        name.abuchen.portfolio.snapshot.SecurityPosition position = startPositions.get(security);
+        if (position != null)
+            baseValue = position.calculateValue().with(converter.at(startDate));
+
+        portfolioBase.add(baseValue);
+        portfolioDelta.add(record.getDelta());
+
+        double percent = baseValue.isZero() ? 0d : record.getDelta().getAmount() * 100d / (double) baseValue.getAmount();
+
+        return new SecurityPerformanceInfo(security.getUUID(), security.getName(), new MoneyInfo(baseValue),
+                        new MoneyInfo(record.getDelta()), percent);
+    }
+
+    private PortfolioSecurityPerformanceInfo toTotalPortfolioPerformanceInfo(Client client,
+                    CurrencyConverterImpl converter, LocalDate startDate, LocalDate endDate)
+    {
+        ClientSnapshot startSnapshot = ClientSnapshot.create(client, converter, startDate);
+        ClientSnapshot endSnapshot = ClientSnapshot.create(client, converter, endDate);
+        var interval = Interval.of(startDate, endDate);
+        SecurityPerformanceSnapshot performance = SecurityPerformanceSnapshot.create(client, converter, interval,
+                        startSnapshot, endSnapshot);
+
+        Map<Security, name.abuchen.portfolio.snapshot.SecurityPosition> startPositions = startSnapshot
+                        .getJointPortfolio()
+                        .getPositionsBySecurity();
+
+        var termCurrency = converter.getTermCurrency();
+        var totalBase = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
+        var totalDelta = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
+
+        performance.getRecords().forEach(record -> toSecurityPerformanceInfo(record, startPositions, startDate,
+                        converter, totalBase, totalDelta));
+
+        double totalPercent = totalBase.isZero() ? 0d : totalDelta.getAmount() * 100d / (double) totalBase.getAmount();
+
+        return new PortfolioSecurityPerformanceInfo("TOTAL", "Total", null, null,
+                        new MoneyInfo(totalBase.toMoney()), new MoneyInfo(totalDelta.toMoney()), totalPercent,
+                        List.of());
     }
 }
