@@ -36,6 +36,11 @@ Be careful to update the version number in these files after rebasing:
 - `name.vloiseau.portfolio.graphql/pom.xml`
 - `name.vloiseau.portfolio.graphql/META-INF/MANIFEST.MF`
 
+
+## auto:
+build-vloiseau.sh : build l'application avec un nouveau numéro de version
+
+## manuel
 ```sh
 mvn -f portfolio-app/pom.xml clean verify
 ```
