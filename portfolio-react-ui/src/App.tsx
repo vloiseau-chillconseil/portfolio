@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { gql, useSubscription } from "@apollo/client";
-import { Layout, Menu, Button, Drawer, Grid, Typography, Progress } from "antd";
+import { Layout, Menu, Button, Drawer, Typography, Progress } from "antd";
 import type { MenuProps } from "antd";
 import {
   HomeOutlined,
@@ -15,8 +15,7 @@ import ConnectionPage from "./pages/ConnectionPage";
 import ConnectPage from "./pages/ConnectPage";
 import { useCurrentClient } from "./state/currentClientContext";
 
-const { Content, Sider, Header } = Layout;
-const { useBreakpoint } = Grid;
+const { Content, Header } = Layout;
 
 const QUOTE_UPDATES_SUBSCRIPTION = gql`
   subscription QuoteUpdates($clientId: String) {
@@ -38,7 +37,6 @@ const App = () => {
   const { currentClient } = useCurrentClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const screens = useBreakpoint();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [quoteProgress, setQuoteProgress] = useState<{
     completedTaskCount: number;
@@ -105,13 +103,11 @@ const App = () => {
     <Layout className="app-layout">
       <Layout className="app-main">
         <Header className="app-header">
-          {screens.xs ? (
-            <Button
-              type="text"
-              icon={<MenuOutlined />}
-              onClick={() => setDrawerOpen(true)}
-            />
-          ) : null}
+          <Button
+            type="text"
+            icon={<MenuOutlined />}
+            onClick={() => setDrawerOpen(true)}
+          />
           <Typography.Title level={4} className="app-title">
             Portfolio React
           </Typography.Title>
@@ -133,13 +129,8 @@ const App = () => {
           </Routes>
         </Content>
       </Layout>
-      {!screens.xs ? (
-        <Sider className="app-sider" width={240}>
-          {menu}
-        </Sider>
-      ) : null}
       <Drawer
-        placement="right"
+        placement="left"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         title="Navigation"

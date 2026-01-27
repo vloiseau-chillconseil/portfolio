@@ -6,8 +6,10 @@ import {
   Observable,
   split,
 } from "@apollo/client";
+import { onError } from "@apollo/client/link/error";
 import { setContext } from "@apollo/client/link/context";
 import { getMainDefinition } from "@apollo/client/utilities";
+import { message } from "antd";
 import { createClient } from "graphql-sse";
 import { print } from "graphql";
 import { getGraphqlUrl, getGraphqlSseUrl } from "./graphqlConfig";
@@ -54,7 +56,19 @@ const splitLink = split(
   authLink.concat(httpLink)
 );
 
+const errorLink = onError(({ graphQLErrors, networkError }) => {
+  if (graphQLErrors?.length) {
+    graphQLErrors.forEach((error) => {
+      message.error(error.message);
+    });
+  }
+
+  if (networkError?.message) {
+    message.error(networkError.message);
+  }
+});
+
 export const apolloClient = new ApolloClient({
-  link: splitLink,
+  link: ApolloLink.from([errorLink, splitLink]),
   cache: new InMemoryCache(),
 });

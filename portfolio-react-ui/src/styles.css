@@ -66,6 +66,45 @@ body {
   color: rgba(0, 0, 0, 0.88);
 }
 
+.performance-layout {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.performance-chart,
+.performance-table {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.performance-name-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 500px) {
+  .performance-start-value {
+    display: none;
+  }
+}
+
+@media (min-width: 1200px) {
+  .performance-layout {
+    flex-wrap: nowrap;
+  }
+
+  .performance-chart {
+    flex: 2 1 0;
+  }
+
+  .performance-table {
+    flex: 1 1 0;
+  }
+}
+
 @media (max-width: 768px) {
   .app-content {
     padding: 16px;
