@@ -8,9 +8,25 @@ body {
   min-height: 100vh;
 }
 
+body.app-mode-mobile {
+  --app-layout-mode: "mobile";
+}
+
+body.app-mode-desktop {
+  --app-layout-mode: "desktop";
+}
+
 .app-layout {
   min-height: 100vh;
   flex-direction: row;
+}
+
+.app-layout--mobile {
+  --app-layout-mode: "mobile";
+}
+
+.app-layout--desktop {
+  --app-layout-mode: "desktop";
 }
 
 .app-main {
@@ -36,7 +52,7 @@ body {
 }
 
 .app-content {
-  padding: 24px;
+  padding: 0;
 }
 
 .app-sider {
@@ -79,6 +95,112 @@ body {
   width: 100%;
 }
 
+.performance-table-desktop {
+  display: block;
+}
+
+.performance-table-mobile {
+  display: none;
+}
+
+body.app-mode-mobile .performance-table-desktop {
+  display: none;
+}
+
+body.app-mode-mobile .performance-table-mobile {
+  display: block;
+}
+
+.performance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.performance-list-item {
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.performance-list-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.performance-list-title {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.performance-list-values {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.performance-list-values .ant-checkbox-wrapper {
+  margin: 0;
+}
+
+.performance-list-metrics {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
+
+.performance-list-value {
+  min-width: 72px;
+  text-align: right;
+}
+
+.performance-list-children {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 20px;
+  border-left: 1px solid #f0f0f0;
+}
+
+.performance-list-total {
+  border-style: dashed;
+}
+
+.performance-list-checkbox {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
+.performance-list-toggle-button {
+  border: none;
+  background: #ffffff;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.performance-list-toggle-spacer {
+  height: 22px;
+  display: inline-block;
+}
+
 .performance-name-cell {
   white-space: nowrap;
   overflow: hidden;
@@ -107,6 +229,6 @@ body {
 
 @media (max-width: 768px) {
   .app-content {
-    padding: 16px;
+    padding: 0;
   }
 }

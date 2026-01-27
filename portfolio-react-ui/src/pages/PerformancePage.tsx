@@ -11,12 +11,13 @@ import {
   Spin,
   message,
   Table,
+  Checkbox,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { useCurrentClient } from "../state/currentClientContext";
-import { SyncOutlined } from "@ant-design/icons";
+import { DownOutlined, RightOutlined, SyncOutlined } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 
 const CLIENT_FILTERS_QUERY = gql`
@@ -161,6 +162,7 @@ const PerformancePage = () => {
   const [selectionSeries, setSelectionSeries] = useState<SelectionSeries[]>([]);
   const [selectionLoading, setSelectionLoading] = useState(false);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [expandedPortfolioKeys, setExpandedPortfolioKeys] = useState<string[]>([]);
   const skipNextSaveRef = useRef(false);
   const isNativePlatform = Capacitor.isNativePlatform();
 
@@ -193,6 +195,7 @@ const PerformancePage = () => {
       setSelectedFilterId(null);
       setSelectedRowKeys([]);
       setSortState({ columnKey: null, order: null });
+      setExpandedPortfolioKeys([]);
       return;
     }
 
@@ -221,11 +224,13 @@ const PerformancePage = () => {
         columnKey: parsed.sortState?.columnKey ?? null,
         order: parsed.sortState?.order ?? null,
       });
+      setExpandedPortfolioKeys([]);
     } catch {
       setDateRange(null);
       setSelectedFilterId(null);
       setSelectedRowKeys([]);
       setSortState({ columnKey: null, order: null });
+      setExpandedPortfolioKeys([]);
     }
   }, [currentClient?.id]);
 
@@ -568,7 +573,10 @@ const PerformancePage = () => {
     if (value === null || value === undefined) {
       return "-";
     }
-    return `${value.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} %`;
+    return `${value.toLocaleString("fr-FR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} %`;
   };
 
   const performanceRows = useMemo<PerformanceRow[]>(() => {
@@ -616,6 +624,12 @@ const PerformancePage = () => {
     });
   }, [portfolioPerformanceQuery.data]);
 
+  const mobilePerformanceRows = useMemo(() => {
+    return [...performanceRows].sort(
+      (left, right) => (right.deltaAmount ?? 0) - (left.deltaAmount ?? 0)
+    );
+  }, [performanceRows]);
+
   const flatPerformanceRows = useMemo(() => {
     const flatten = (rows: PerformanceRow[]) =>
       rows.flatMap((row) => [row, ...(row.children ? flatten(row.children) : [])]);
@@ -649,6 +663,7 @@ const PerformancePage = () => {
       setSelectionSeries([]);
       setSelectionError(null);
       setSelectionLoading(false);
+      setExpandedPortfolioKeys([]);
     }
   }, [shouldFetch]);
 
@@ -733,6 +748,24 @@ const PerformancePage = () => {
     setSelectedRows(rows);
   };
 
+  const handleListSelectionChange = (row: PerformanceRow, checked: boolean) => {
+    const nextKeys = checked
+      ? Array.from(new Set([...selectedRowKeys, row.key]))
+      : selectedRowKeys.filter((key) => key !== row.key);
+    setSelectedRowKeys(nextKeys);
+    setSelectedRows(
+      flatPerformanceRows.filter((item) => nextKeys.includes(item.key))
+    );
+  };
+
+  const togglePortfolioExpanded = (rowKey: string) => {
+    setExpandedPortfolioKeys((prev) =>
+      prev.includes(rowKey)
+        ? prev.filter((key) => key !== rowKey)
+        : [...prev, rowKey]
+    );
+  };
+
   const handleTableChange = (
     _pagination: unknown,
     _filters: unknown,
@@ -815,6 +848,28 @@ const PerformancePage = () => {
       }
     );
   }, [portfolioPerformanceQuery.data]);
+
+  const totalSummary = useMemo(() => {
+    const totalAmount = performanceTotals.hasAmount
+      ? performanceTotals.totalAmount
+      : null;
+    const totalStartAmount = performanceTotals.hasStartAmount
+      ? performanceTotals.startAmount
+      : null;
+    const totalPercent =
+      "percentValue" in performanceTotals &&
+      performanceTotals.percentValue !== null
+        ? performanceTotals.percentValue
+        : performanceTotals.percentCount
+          ? performanceTotals.percentSum / performanceTotals.percentCount
+          : null;
+
+    return {
+      totalAmount,
+      totalStartAmount,
+      totalPercent,
+    };
+  }, [performanceTotals]);
 
   return (
     <Space direction="vertical" size="large" className="page-stack">
@@ -969,106 +1024,95 @@ const PerformancePage = () => {
                     <Typography.Text type="secondary">
                       Détail des performances du {zoomRange?.startDate} au {zoomRange?.endDate}
                     </Typography.Text>
-                    <Table
-                      rowSelection={{
-                        selectedRowKeys,
-                        onChange: handleRowSelectionChange,
-                        checkStrictly: true,
-                      }}
-                      onChange={handleTableChange}
-                      tableLayout="fixed"
-                      columns={[
-                        {
-                          title: "Nom",
-                          dataIndex: "name",
-                          key: "name",
-                          className: "performance-name-cell",
-                          width: 240,
-                          ellipsis: true,
-                          sorter: (a, b) => a.name.localeCompare(b.name, "fr"),
-                          sortOrder:
-                            sortState.columnKey === "name" ? sortState.order : null,
-                          sortDirections: ["ascend", "descend"],
-                        },
-                        {
-                          title: "Valeur de départ",
-                          dataIndex: "startAmount",
-                          key: "startAmount",
-                          align: "right",
-                          className: "performance-start-value",
-                          width: 150,
-                          render: (_value, record) =>
-                            formatAmount(record.startAmount, record.startCurrency),
-                          sorter: (a, b) =>
-                            (a.startAmount ?? 0) - (b.startAmount ?? 0),
-                          sortOrder:
-                            sortState.columnKey === "startAmount"
-                              ? sortState.order
-                              : null,
-                          sortDirections: ["ascend", "descend"],
-                        },
-                        {
-                          title: "Performance en euros",
-                          dataIndex: "deltaAmount",
-                          key: "deltaAmount",
-                          align: "right",
-                          width: 170,
-                          render: (_value, record) =>
-                            formatAmount(record.deltaAmount, record.deltaCurrency),
-                          sorter: (a, b) =>
-                            (a.deltaAmount ?? 0) - (b.deltaAmount ?? 0),
-                          sortOrder:
-                            sortState.columnKey === "deltaAmount"
-                              ? sortState.order
-                              : null,
-                          sortDirections: ["ascend", "descend"],
-                        },
-                        {
-                          title: "Performance en %",
-                          dataIndex: "deltaPercent",
-                          key: "deltaPercent",
-                          align: "right",
-                          width: 130,
-                          render: (value) => formatPercent(value),
-                          sorter: (a, b) =>
-                            (a.deltaPercent ?? 0) - (b.deltaPercent ?? 0),
-                          sortOrder:
-                            sortState.columnKey === "deltaPercent"
-                              ? sortState.order
-                              : null,
-                          sortDirections: ["ascend", "descend"],
-                        },
-                      ]}
-                      dataSource={performanceRows}
-                      pagination={false}
-                      size="small"
-                      summary={() => {
-                        const totalAmount = performanceTotals.hasAmount
-                          ? performanceTotals.totalAmount
-                          : null;
-                        const totalStartAmount = performanceTotals.hasStartAmount
-                          ? performanceTotals.startAmount
-                          : null;
-                        const totalPercent =
-                          "percentValue" in performanceTotals &&
-                          performanceTotals.percentValue !== null
-                            ? performanceTotals.percentValue
-                            : performanceTotals.percentCount
-                              ? performanceTotals.percentSum /
-                                performanceTotals.percentCount
-                              : null;
-
-                        return (
+                    <div className="performance-table-desktop">
+                      <Table
+                        rowSelection={{
+                          selectedRowKeys,
+                          onChange: handleRowSelectionChange,
+                          checkStrictly: true,
+                        }}
+                        onChange={handleTableChange}
+                        tableLayout="fixed"
+                        columns={[
+                          {
+                            title: "Nom",
+                            dataIndex: "name",
+                            key: "name",
+                            className: "performance-name-cell",
+                            width: 240,
+                            ellipsis: true,
+                            sorter: (a, b) => a.name.localeCompare(b.name, "fr"),
+                            sortOrder:
+                              sortState.columnKey === "name" ? sortState.order : null,
+                            sortDirections: ["ascend", "descend"],
+                          },
+                          {
+                            title: "Valeur de départ",
+                            dataIndex: "startAmount",
+                            key: "startAmount",
+                            align: "right",
+                            className: "performance-start-value",
+                            width: 150,
+                            render: (_value, record) =>
+                              formatAmount(record.startAmount, record.startCurrency),
+                            sorter: (a, b) =>
+                              (a.startAmount ?? 0) - (b.startAmount ?? 0),
+                            sortOrder:
+                              sortState.columnKey === "startAmount"
+                                ? sortState.order
+                                : null,
+                            sortDirections: ["ascend", "descend"],
+                          },
+                          {
+                            title: "Performance en euros",
+                            dataIndex: "deltaAmount",
+                            key: "deltaAmount",
+                            align: "right",
+                            width: 170,
+                            render: (_value, record) =>
+                              formatAmount(record.deltaAmount, record.deltaCurrency),
+                            sorter: (a, b) =>
+                              (a.deltaAmount ?? 0) - (b.deltaAmount ?? 0),
+                            sortOrder:
+                              sortState.columnKey === "deltaAmount"
+                                ? sortState.order
+                                : null,
+                            sortDirections: ["ascend", "descend"],
+                          },
+                          {
+                            title: "Performance en %",
+                            dataIndex: "deltaPercent",
+                            key: "deltaPercent",
+                            align: "right",
+                            width: 130,
+                            render: (value) => formatPercent(value),
+                            sorter: (a, b) =>
+                              (a.deltaPercent ?? 0) - (b.deltaPercent ?? 0),
+                            sortOrder:
+                              sortState.columnKey === "deltaPercent"
+                                ? sortState.order
+                                : null,
+                            sortDirections: ["ascend", "descend"],
+                          },
+                        ]}
+                        dataSource={performanceRows}
+                        pagination={false}
+                        size="small"
+                        summary={() => (
                           <Table.Summary>
                             <Table.Summary.Row>
                               <Table.Summary.Cell index={0} />
                               <Table.Summary.Cell index={1}>
                                 <Typography.Text strong>Total</Typography.Text>
                               </Table.Summary.Cell>
-                              <Table.Summary.Cell index={2} align="right">
+                              <Table.Summary.Cell
+                                index={2}
+                                align="right"
+                                className="performance-start-value"
+                              >
                                 <Typography.Text strong>
                                   {formatAmount(
-                                    totalStartAmount,
+                                    totalSummary.totalStartAmount,
                                     performanceTotals.startCurrency ?? null
                                   )}
                                 </Typography.Text>
@@ -1076,21 +1120,152 @@ const PerformancePage = () => {
                               <Table.Summary.Cell index={3} align="right">
                                 <Typography.Text strong>
                                   {formatAmount(
-                                    totalAmount,
+                                    totalSummary.totalAmount,
                                     performanceTotals.currencyCode
                                   )}
                                 </Typography.Text>
                               </Table.Summary.Cell>
                               <Table.Summary.Cell index={4} align="right">
                                 <Typography.Text strong>
-                                  {formatPercent(totalPercent)}
+                                  {formatPercent(totalSummary.totalPercent)}
                                 </Typography.Text>
                               </Table.Summary.Cell>
                             </Table.Summary.Row>
                           </Table.Summary>
-                        );
-                      }}
-                    />
+                        )}
+                      />
+                    </div>
+                    <div className="performance-table-mobile">
+                      <div className="performance-list">
+                        {mobilePerformanceRows.map((row) => (
+                          <div key={row.key} className="performance-list-item">
+                            <div className="performance-list-header">
+                              <Typography.Text strong className="performance-list-title">
+                                {row.name}
+                              </Typography.Text>
+                            </div>
+                            <div className="performance-list-values">
+                              {row.children?.length ? (
+                                <button
+                                  type="button"
+                                  className="performance-list-toggle-button"
+                                  onClick={() => togglePortfolioExpanded(row.key)}
+                                  aria-label={
+                                    expandedPortfolioKeys.includes(row.key)
+                                      ? "Réduire"
+                                      : "Déployer"
+                                  }
+                                >
+                                  {expandedPortfolioKeys.includes(row.key) ? (
+                                    <DownOutlined />
+                                  ) : (
+                                    <RightOutlined />
+                                  )}
+                                </button>
+                              ) : (
+                                <span className="performance-list-toggle-spacer" />
+                              )}
+                              <Checkbox
+                                checked={selectedRowKeys.includes(row.key)}
+                                onChange={(event) =>
+                                  handleListSelectionChange(
+                                    row,
+                                    event.target.checked
+                                  )
+                                }
+                              />
+                              <div className="performance-list-metrics">
+                                <Typography.Text className="performance-list-value">
+                                  {formatAmount(
+                                    row.deltaAmount,
+                                    row.deltaCurrency
+                                  )}
+                                </Typography.Text>
+                                <Typography.Text
+                                  type="secondary"
+                                  className="performance-list-value"
+                                >
+                                  {formatPercent(row.deltaPercent)}
+                                </Typography.Text>
+                              </div>
+                            </div>
+                            {row.children?.length &&
+                            expandedPortfolioKeys.includes(row.key) ? (
+                              <div className="performance-list-children">
+                                {row.children.map((child) => (
+                                  <div
+                                    key={child.key}
+                                    className="performance-list-item"
+                                  >
+                                    <div className="performance-list-header">
+                                      <Typography.Text className="performance-list-title">
+                                        {child.name}
+                                      </Typography.Text>
+                                    </div>
+                                    <div className="performance-list-values">
+                                      <span className="performance-list-toggle-spacer" />
+                                      <Checkbox
+                                        checked={selectedRowKeys.includes(child.key)}
+                                        onChange={(event) =>
+                                          handleListSelectionChange(
+                                            child,
+                                            event.target.checked
+                                          )
+                                        }
+                                      />
+                                      <div className="performance-list-metrics">
+                                        <Typography.Text className="performance-list-value">
+                                          {formatAmount(
+                                            child.deltaAmount,
+                                            child.deltaCurrency
+                                          )}
+                                        </Typography.Text>
+                                        <Typography.Text
+                                          type="secondary"
+                                          className="performance-list-value"
+                                        >
+                                          {formatPercent(child.deltaPercent)}
+                                        </Typography.Text>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                        <div className="performance-list-item performance-list-total">
+                          <div className="performance-list-header">
+                            <span className="performance-list-checkbox" />
+                            <Typography.Text strong className="performance-list-title">
+                              Total
+                            </Typography.Text>
+                          </div>
+                          <div className="performance-list-values">
+                            <span className="performance-list-toggle-spacer" />
+                            <span className="performance-list-checkbox" />
+                            <div className="performance-list-metrics">
+                              <Typography.Text
+                                strong
+                                className="performance-list-value"
+                              >
+                                {formatAmount(
+                                  totalSummary.totalAmount,
+                                  performanceTotals.currencyCode
+                                )}
+                              </Typography.Text>
+                              <Typography.Text
+                                strong
+                                type="secondary"
+                                className="performance-list-value"
+                              >
+                                {formatPercent(totalSummary.totalPercent)}
+                              </Typography.Text>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </Space>
                 ) : (
                   <Typography.Text type="secondary">

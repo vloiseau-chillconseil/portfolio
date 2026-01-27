@@ -16,6 +16,7 @@ import ConnectPage from "./pages/ConnectPage";
 import { useCurrentClient } from "./state/currentClientContext";
 
 const { Content, Header } = Layout;
+const MOBILE_MAX_WIDTH = 375;
 
 const QUOTE_UPDATES_SUBSCRIPTION = gql`
   subscription QuoteUpdates($clientId: String) {
@@ -38,6 +39,9 @@ const App = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(
+    () => window.innerWidth <= MOBILE_MAX_WIDTH
+  );
   const [quoteProgress, setQuoteProgress] = useState<{
     completedTaskCount: number;
     taskCount: number;
@@ -60,6 +64,24 @@ const App = () => {
       setQuoteProgress(quoteUpdateData.quoteUpdates);
     }
   }, [quoteUpdateData]);
+
+  useEffect(() => {
+    const updateLayoutMode = () => {
+      setIsMobileLayout(window.innerWidth <= MOBILE_MAX_WIDTH);
+    };
+
+    updateLayoutMode();
+    window.addEventListener("resize", updateLayoutMode);
+
+    return () => {
+      window.removeEventListener("resize", updateLayoutMode);
+    };
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle("app-mode-mobile", isMobileLayout);
+    document.body.classList.toggle("app-mode-desktop", !isMobileLayout);
+  }, [isMobileLayout]);
 
   const progressPercent = useMemo(() => {
     const taskCount = quoteProgress?.taskCount ?? 0;
@@ -100,7 +122,11 @@ const App = () => {
   );
 
   return (
-    <Layout className="app-layout">
+    <Layout
+      className={`app-layout ${
+        isMobileLayout ? "app-layout--mobile" : "app-layout--desktop"
+      }`}
+    >
       <Layout className="app-main">
         <Header className="app-header">
           <Button
