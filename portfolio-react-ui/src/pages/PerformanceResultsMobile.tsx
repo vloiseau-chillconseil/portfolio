@@ -1,8 +1,8 @@
-import { Alert, Carousel, Checkbox, Space, Spin, Typography } from "antd";
-import { DownOutlined, UpOutlined } from "@ant-design/icons";
+import { Alert, Button, Carousel, Checkbox, Segmented, Space, Spin, Typography } from "antd";
+import { AlignLeftOutlined, UnorderedListOutlined, DownOutlined, UpOutlined } from "@ant-design/icons";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   PerformanceRow,
   PerformanceTotals,
@@ -64,6 +64,7 @@ const PerformanceResultsMobile = ({
   formatPercent,
 }: PerformanceResultsMobileProps) => {
   const carouselRef = useRef<{ goTo: (slide: number) => void } | null>(null);
+  const [activeSlide, setActiveSlide] = useState(0);
 
   return (
     <Space direction="vertical" size="large" className="page-stack">
@@ -86,34 +87,26 @@ const PerformanceResultsMobile = ({
         </Typography.Text>
       )}
       <div className="performance-mobile-panels">
-        <div className="performance-mobile-tabs">
-          <button
-            type="button"
-            className="performance-mobile-tab"
-            onClick={() => carouselRef.current?.goTo(0)}
-          >
-            Paramètres
-          </button>
-          <button
-            type="button"
-            className="performance-mobile-tab"
-            onClick={() => carouselRef.current?.goTo(1)}
-          >
-            Graphe
-          </button>
-          <button
-            type="button"
-            className="performance-mobile-tab"
-            onClick={() => carouselRef.current?.goTo(2)}
-          >
-            Liste
-          </button>
-        </div>
+        <Segmented
+          block
+          value={activeSlide}
+          options={[
+            { label: "Paramètres", value: 0 },
+            { label: "Graphe", value: 1 },
+            { label: "Liste", value: 2 },
+          ]}
+          onChange={(value) => {
+            const next = Number(value);
+            setActiveSlide(next);
+            carouselRef.current?.goTo(next);
+          }}
+        />
         <Carousel
           ref={carouselRef}
           dots
           draggable
           swipeToSlide
+          afterChange={(current) => setActiveSlide(current)}
         >
           <div className="performance-mobile-panel performance-mobile-panel--params">
             {parametersPanel}
@@ -158,13 +151,15 @@ const PerformanceResultsMobile = ({
               <Spin />
             ) : performanceRows.length ? (
               <div className="performance-table-mobile">
-                <button
-                  type="button"
-                  className="performance-mobile-toggle-list"
+                <Button
+                  block
+                  icon={
+                    showFlatSecurities ? <AlignLeftOutlined /> : <UnorderedListOutlined />
+                  }
                   onClick={onToggleFlatSecurities}
                 >
                   {showFlatSecurities ? "Groupé par portefeuille" : "Titres à plat"}
-                </button>
+                </Button>
                 <div className="performance-list">
                   <div className="performance-list-item performance-list-total">
                     <div className="performance-list-header">
