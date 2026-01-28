@@ -2,6 +2,7 @@ import { gql, useApolloClient, useMutation, useQuery } from "@apollo/client";
 import { Capacitor } from "@capacitor/core";
 import {
   Alert,
+  Button,
   Card,
   Carousel,
   DatePicker,
@@ -16,7 +17,11 @@ import type { EChartsOption } from "echarts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CarouselRef } from "antd/es/carousel";
 import { useCurrentClient } from "../state/currentClientContext";
-import { SyncOutlined } from "@ant-design/icons";
+import {
+  AlignLeftOutlined,
+  SyncOutlined,
+  UnorderedListOutlined,
+} from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import PerformanceResultsDesktop from "./PerformanceResultsDesktop";
 import PerformanceResultsMobile from "./PerformanceResultsMobile";
@@ -161,6 +166,7 @@ const PerformancePage = () => {
     () => window.innerWidth <= 500
   );
   const skipNextSaveRef = useRef(false);
+  const [showFlatSecurities, setShowFlatSecurities] = useState(false);
   const isNativePlatform = Capacitor.isNativePlatform();
 
   const { data: filtersData, loading: filtersLoading } = useQuery<{
@@ -565,6 +571,11 @@ const PerformancePage = () => {
     return flatten(performanceRows);
   }, [performanceRows]);
 
+  const securitiesOnlyRows = useMemo(
+    () => flatPerformanceRows.filter((row) => row.rowType === "security"),
+    [flatPerformanceRows]
+  );
+
   useEffect(() => {
     if (!selectedRowKeys.length) {
       if (selectedRows.length) {
@@ -963,39 +974,54 @@ const PerformancePage = () => {
                 parametersPanel={parametersPanel}
                 performanceRows={performanceRows}
                 mobilePerformanceRows={mobilePerformanceRows}
+                showFlatSecurities={showFlatSecurities}
+                securitiesRows={securitiesOnlyRows}
+                onToggleFlatSecurities={() =>
+                  setShowFlatSecurities((previous) => !previous)
+                }
                 expandedPortfolioKeys={expandedPortfolioKeys}
                 selectedRowKeys={selectedRowKeys}
                 zoomRange={zoomRange}
                 totalSummary={totalSummary}
                 performanceTotals={performanceTotals}
-                onTogglePortfolioExpanded={togglePortfolioExpanded}
-                onListSelectionChange={handleListSelectionChange}
-                formatAmount={formatAmount}
-                formatPercent={formatPercent}
-              />
-            )
-          ) : (
-            <PerformanceResultsDesktop
-              delta={delta}
-              deltaLoading={deltaQuery.loading}
-              accumulatedLoading={accumulatedQuery.loading}
-              selectionLoading={selectionLoading}
-              hasChartData={hasChartData}
-              chartOptions={chartOptions}
-              selectionError={selectionError}
-              portfolioError={portfolioPerformanceQuery.error?.message ?? null}
-              portfolioLoading={portfolioPerformanceQuery.loading}
-              performanceRows={performanceRows}
-              totalSummary={totalSummary}
-              performanceTotals={performanceTotals}
-              zoomRange={zoomRange}
-              selectedRowKeys={selectedRowKeys}
-              sortState={sortState}
-              onRowSelectionChange={handleRowSelectionChange}
-              onTableChange={handleTableChange}
+              showFlatSecurities={showFlatSecurities}
+              securitiesRows={securitiesOnlyRows}
+              onToggleFlatSecurities={() =>
+                setShowFlatSecurities((previous) => !previous)
+              }
+              onTogglePortfolioExpanded={togglePortfolioExpanded}
+              onListSelectionChange={handleListSelectionChange}
               formatAmount={formatAmount}
               formatPercent={formatPercent}
             />
+            )
+          ) : (
+          <PerformanceResultsDesktop
+            delta={delta}
+            deltaLoading={deltaQuery.loading}
+            accumulatedLoading={accumulatedQuery.loading}
+            selectionLoading={selectionLoading}
+            hasChartData={hasChartData}
+            chartOptions={chartOptions}
+            selectionError={selectionError}
+            portfolioError={portfolioPerformanceQuery.error?.message ?? null}
+            portfolioLoading={portfolioPerformanceQuery.loading}
+              performanceRows={performanceRows}
+              securitiesRows={securitiesOnlyRows}
+              totalSummary={totalSummary}
+              performanceTotals={performanceTotals}
+              zoomRange={zoomRange}
+              showFlatSecurities={showFlatSecurities}
+              selectedRowKeys={selectedRowKeys}
+            sortState={sortState}
+            onToggleFlatSecurities={() =>
+              setShowFlatSecurities((previous) => !previous)
+            }
+            onRowSelectionChange={handleRowSelectionChange}
+            onTableChange={handleTableChange}
+            formatAmount={formatAmount}
+            formatPercent={formatPercent}
+          />
           )}
         </Card>
       ) : (

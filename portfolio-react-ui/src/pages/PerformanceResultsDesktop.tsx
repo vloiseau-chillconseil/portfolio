@@ -1,4 +1,5 @@
-import { Alert, Space, Spin, Table, Typography } from "antd";
+import { Alert, Button, Space, Spin, Table, Typography } from "antd";
+import { AlignLeftOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import type { TableProps } from "antd";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
@@ -21,11 +22,14 @@ type PerformanceResultsDesktopProps = {
   portfolioError: string | null;
   portfolioLoading: boolean;
   performanceRows: PerformanceRow[];
+  securitiesRows: PerformanceRow[];
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
   zoomRange: ZoomRange;
+  showFlatSecurities: boolean;
   selectedRowKeys: string[];
   sortState: SortState;
+  onToggleFlatSecurities: () => void;
   onRowSelectionChange: (keys: Array<string | number>, rows: PerformanceRow[]) => void;
   onTableChange: TableProps<PerformanceRow>["onChange"];
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
@@ -43,16 +47,21 @@ const PerformanceResultsDesktop = ({
   portfolioError,
   portfolioLoading,
   performanceRows,
+  securitiesRows,
   totalSummary,
   performanceTotals,
   zoomRange,
+  showFlatSecurities,
   selectedRowKeys,
   sortState,
+  onToggleFlatSecurities,
   onRowSelectionChange,
   onTableChange,
   formatAmount,
   formatPercent,
 }: PerformanceResultsDesktopProps) => {
+  const tableRows = showFlatSecurities ? securitiesRows : performanceRows;
+
   return (
     <Space direction="vertical" size="large" className="page-stack">
       {deltaLoading ? (
@@ -118,6 +127,15 @@ const PerformanceResultsDesktop = ({
                 Détail des performances du {zoomRange?.startDate} au{" "}
                 {zoomRange?.endDate}
               </Typography.Text>
+              <Button
+                type="default"
+                icon={
+                  showFlatSecurities ? <AlignLeftOutlined /> : <UnorderedListOutlined />
+                }
+                onClick={onToggleFlatSecurities}
+              >
+                {showFlatSecurities ? "Groupé par portefeuille" : "Titres à plat"}
+              </Button>
               <div className="performance-table-desktop">
                 <Table
                   rowSelection={{
@@ -189,7 +207,7 @@ const PerformanceResultsDesktop = ({
                       sortDirections: ["ascend", "descend"],
                     },
                   ]}
-                  dataSource={performanceRows}
+                  dataSource={tableRows}
                   pagination={false}
                   size="small"
                   summary={() => (
