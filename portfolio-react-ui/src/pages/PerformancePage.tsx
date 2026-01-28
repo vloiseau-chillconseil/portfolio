@@ -546,9 +546,10 @@ const PerformancePage = () => {
 
     return {
       animation: false,
-      legend: { show: selectionSeries.length > 0 },
+      legend: { show: false },
       tooltip: {
         trigger: "axis",
+        showContent: false,
         valueFormatter: (value) =>
           Number(value).toLocaleString("fr-FR", {
             maximumFractionDigits: 2,
@@ -563,7 +564,7 @@ const PerformancePage = () => {
         },
       },
       yAxis: {
-        type: "value",
+        type: "time",
         axisLabel: {
           // ellipsis: true,
           inside: true,
