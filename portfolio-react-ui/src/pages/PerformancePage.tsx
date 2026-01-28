@@ -145,12 +145,6 @@ const PerformancePage = () => {
   const [nativeStartDate, setNativeStartDate] = useState("");
   const [nativeEndDate, setNativeEndDate] = useState("");
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
-  const [zoomRange, setZoomRange] = useState<
-    { startDate: string; endDate: string } | null
-  >(null);
-  const [appliedZoomRange, setAppliedZoomRange] = useState<
-    { startDate: string; endDate: string } | null
-  >(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<PerformanceRow[]>([]);
   const [sortState, setSortState] = useState<SortState>({
@@ -167,7 +161,6 @@ const PerformancePage = () => {
     () => window.innerWidth <= 500
   );
   const skipNextSaveRef = useRef(false);
-  const [sliderRange, setSliderRange] = useState<[number, number] | null>(null);
   const isNativePlatform = Capacitor.isNativePlatform();
 
   const { data: filtersData, loading: filtersLoading } = useQuery<{
@@ -192,6 +185,9 @@ const PerformancePage = () => {
   const hasFilter = selectedFilterId !== null;
   const hasClient = Boolean(currentClient?.id);
   const shouldFetch = hasClient && hasFilter && hasDates;
+  const zoomRange = formattedDates
+    ? { startDate: formattedDates.startDate, endDate: formattedDates.endDate }
+    : null;
 
   useEffect(() => {
     if (!currentClient?.id) {
@@ -262,28 +258,6 @@ const PerformancePage = () => {
     setNativeStartDate(dateRange[0].format("YYYY-MM-DD"));
     setNativeEndDate(dateRange[1].format("YYYY-MM-DD"));
   }, [dateRange, isNativePlatform]);
-
-  useEffect(() => {
-    if (!formattedDates?.startDate || !formattedDates?.endDate) {
-      setZoomRange(null);
-      setAppliedZoomRange(null);
-      setSliderRange(null);
-      return;
-    }
-
-    const sliderStart = dayjs(formattedDates.startDate).valueOf();
-    const sliderEnd = dayjs(formattedDates.endDate).valueOf();
-
-    setZoomRange({
-      startDate: formattedDates.startDate,
-      endDate: formattedDates.endDate,
-    });
-    setAppliedZoomRange({
-      startDate: formattedDates.startDate,
-      endDate: formattedDates.endDate,
-    });
-    setSliderRange([sliderStart, sliderEnd]);
-  }, [formattedDates?.startDate, formattedDates?.endDate]);
 
   useEffect(() => {
     if (!currentClient?.id) return;
@@ -359,11 +333,11 @@ const PerformancePage = () => {
     variables: {
       clientId: currentClient?.id,
       filterId: selectedFilterId,
-      startDate: appliedZoomRange?.startDate,
-      endDate: appliedZoomRange?.endDate,
+      startDate: formattedDates?.startDate,
+      endDate: formattedDates?.endDate,
     },
     fetchPolicy: "no-cache",
-    skip: !shouldFetch || !appliedZoomRange,
+    skip: !shouldFetch,
   });
 
   const [updateQuotes, updateQuotesState] = useMutation<{
@@ -389,11 +363,6 @@ const PerformancePage = () => {
     const points = accumulatedQuery.data?.clientFilterAccumulatedDelta ?? [];
     return mapDeltaPoints(points);
   }, [accumulatedQuery.data, mapDeltaPoints]);
-
-  const brushData = useMemo(
-    () => (chartData.length ? chartData : selectionSeries[0]?.points ?? []),
-    [chartData, selectionSeries]
-  );
 
   const filters = useMemo(() => filtersData?.clientFilters ?? [], [filtersData]);
 
@@ -455,84 +424,6 @@ const PerformancePage = () => {
     [chartData, selectionSeries]
   );
 
-  const brushSelection = useMemo(() => {
-    if (zoomRange?.startDate && zoomRange?.endDate) {
-      return {
-        min: dayjs(zoomRange.startDate).valueOf(),
-        max: dayjs(zoomRange.endDate).valueOf(),
-      };
-    }
-    if (brushData.length) {
-      return {
-        min: brushData[0].timestamp,
-        max: brushData[brushData.length - 1].timestamp,
-      };
-    }
-    return null;
-  }, [brushData, zoomRange]);
-
-  const brushRange = useMemo(
-    () =>
-      brushSelection
-        ? { startValue: brushSelection.min, endValue: brushSelection.max }
-        : undefined,
-    [brushSelection]
-  );
-
-  const sliderDomain = useMemo(() => {
-    if (brushData.length) {
-      return {
-        min: brushData[0].timestamp,
-        max: brushData[brushData.length - 1].timestamp,
-      };
-    }
-    return null;
-  }, [brushData]);
-
-  const sliderValues = useMemo(() => {
-    if (sliderRange) return sliderRange;
-    if (zoomRange?.startDate && zoomRange?.endDate) {
-      return [
-        dayjs(zoomRange.startDate).valueOf(),
-        dayjs(zoomRange.endDate).valueOf(),
-      ] as [number, number];
-    }
-    if (sliderDomain) {
-      return [sliderDomain.min, sliderDomain.max] as [number, number];
-    }
-    return null;
-  }, [sliderDomain, sliderRange, zoomRange]);
-
-  useEffect(() => {
-    if (!sliderDomain) return;
-    setSliderRange((current) => {
-      if (!current) return [sliderDomain.min, sliderDomain.max];
-      const [start, end] = current;
-      const next: [number, number] = [
-        Math.max(sliderDomain.min, start),
-        Math.min(sliderDomain.max, end),
-      ];
-      return next;
-    });
-  }, [sliderDomain]);
-
-  const handleSliderChange = (values: [number, number]) => {
-    if (!values?.length) return;
-    const [start, end] = values;
-    const startDate = dayjs(start).format("YYYY-MM-DD");
-    const endDate = dayjs(end).format("YYYY-MM-DD");
-    setSliderRange(values);
-    setZoomRange({ startDate, endDate });
-  };
-
-  const handleSliderAfterChange = (values: [number, number]) => {
-    if (!values?.length) return;
-    const [start, end] = values;
-    const startDate = dayjs(start).format("YYYY-MM-DD");
-    const endDate = dayjs(end).format("YYYY-MM-DD");
-    setAppliedZoomRange({ startDate, endDate });
-  };
-
   const chartOptions = useMemo<EChartsOption>(() => {
     const series = [];
 
@@ -591,7 +482,7 @@ const PerformancePage = () => {
       },
       series,
     };
-  }, [brushRange, chartData, selectionSeries]);
+  }, [chartData, selectionSeries]);
 
   const formatAmount = (amount: number | null, currencyCode: string | null) => {
     if (amount === null || amount === undefined) {
@@ -702,13 +593,11 @@ const PerformancePage = () => {
       setSelectionError(null);
       setSelectionLoading(false);
       setExpandedPortfolioKeys([]);
-      setAppliedZoomRange(null);
-      setZoomRange(null);
     }
   }, [shouldFetch]);
 
   useEffect(() => {
-    if (!shouldFetch || !appliedZoomRange || !selectedRows.length) {
+    if (!shouldFetch || !formattedDates || !selectedRows.length) {
       setSelectionSeries([]);
       setSelectionError(null);
       setSelectionLoading(false);
@@ -727,8 +616,8 @@ const PerformancePage = () => {
             variables: {
               clientId: currentClient?.id ?? null,
               filterId: selectedFilterId,
-              startDate: appliedZoomRange.startDate,
-              endDate: appliedZoomRange.endDate,
+              startDate: formattedDates.startDate,
+              endDate: formattedDates.endDate,
               portfolioId: row.portfolioId,
               securityId: row.securityId,
             },
@@ -777,7 +666,7 @@ const PerformancePage = () => {
     selectedRows,
     selectedFilterId,
     shouldFetch,
-    zoomRange,
+    formattedDates,
   ]);
 
   const handleRowSelectionChange = (
@@ -912,77 +801,81 @@ const PerformancePage = () => {
     };
   }, [performanceTotals]);
 
-  return (
-    <Space direction="vertical" size="large" className="page-stack">
-      <Card
-        title="Paramètres"
-        extra={
-          <Dropdown.Button
-            menu={{ items: updateQuotesItems, onClick: handleUpdateQuotes }}
-            icon={<SyncOutlined spin={updateQuotesLoading} />}
-            loading={updateQuotesLoading}
-            disabled={!currentClient}
-          >
-            Actualiser
-          </Dropdown.Button>
-        }
-      >
-        <Space direction="vertical" size="middle" className="form-stack">
-          <Space direction="vertical" size={4}>
-            <Typography.Text>Plage de dates</Typography.Text>
-            {isNativePlatform ? (
-              <Space direction="vertical" size={8} className="date-range-native">
-                <input
-                  type="date"
-                  value={nativeStartValue}
-                  onChange={(event) => {
-                    const nextValue = event.target.value;
-                    setNativeStartDate(nextValue);
-                    updateNativeRange(nextValue, nativeEndValue);
-                  }}
-                />
-                <input
-                  type="date"
-                  value={nativeEndValue}
-                  onChange={(event) => {
-                    const nextValue = event.target.value;
-                    setNativeEndDate(nextValue);
-                    updateNativeRange(nativeStartValue, nextValue);
-                  }}
-                />
-              </Space>
-            ) : (
-              <DatePicker.RangePicker
-                value={dateRange}
-                onChange={(value) =>
-                  setDateRange(value && value[0] && value[1] ? [value[0], value[1]] : null)
-                }
-                allowClear
+  const parametersPanel = (
+    <Card
+      title="Paramètres"
+      extra={
+        <Dropdown.Button
+          menu={{ items: updateQuotesItems, onClick: handleUpdateQuotes }}
+          icon={<SyncOutlined spin={updateQuotesLoading} />}
+          loading={updateQuotesLoading}
+          disabled={!currentClient}
+        >
+          Actualiser
+        </Dropdown.Button>
+      }
+    >
+      <Space direction="vertical" size="middle" className="form-stack">
+        <Space direction="vertical" size={4}>
+          <Typography.Text>Plage de dates</Typography.Text>
+          {isNativePlatform ? (
+            <Space direction="vertical" size={8} className="date-range-native">
+              <input
+                type="date"
+                value={nativeStartValue}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setNativeStartDate(nextValue);
+                  updateNativeRange(nextValue, nativeEndValue);
+                }}
               />
-            )}
-          </Space>
-          <Space direction="vertical" size={4}>
-            <Typography.Text>Client filter</Typography.Text>
-            <Select
-              placeholder={
-                currentClient
-                  ? "Sélectionnez un filtre"
-                  : "Choisissez d'abord un client"
+              <input
+                type="date"
+                value={nativeEndValue}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setNativeEndDate(nextValue);
+                  updateNativeRange(nativeStartValue, nextValue);
+                }}
+              />
+            </Space>
+          ) : (
+            <DatePicker.RangePicker
+              value={dateRange}
+              onChange={(value) =>
+                setDateRange(value && value[0] && value[1] ? [value[0], value[1]] : null)
               }
-              value={selectedFilterId}
-              onChange={(value) => setSelectedFilterId(value)}
-              options={filters.map((filter) => ({
-                value: filter?.id ?? "",
-                label: filter?.label ?? filter?.id ?? "",
-              }))}
-              loading={filtersLoading}
-              disabled={!currentClient}
-              style={{ minWidth: 280 }}
               allowClear
             />
-          </Space>
+          )}
         </Space>
-      </Card>
+        <Space direction="vertical" size={4}>
+          <Typography.Text>Client filter</Typography.Text>
+          <Select
+            placeholder={
+              currentClient
+                ? "Sélectionnez un filtre"
+                : "Choisissez d'abord un client"
+            }
+            value={selectedFilterId}
+            onChange={(value) => setSelectedFilterId(value)}
+            options={filters.map((filter) => ({
+              value: filter?.id ?? "",
+              label: filter?.label ?? filter?.id ?? "",
+            }))}
+            loading={filtersLoading}
+            disabled={!currentClient}
+            style={{ minWidth: 280 }}
+            allowClear
+          />
+        </Space>
+      </Space>
+    </Card>
+  );
+
+  return (
+    <Space direction="vertical" size="large" className="page-stack">
+      {!isMobileLayout ? parametersPanel : null}
 
       {!currentClient ? (
         <Alert
@@ -1067,6 +960,7 @@ const PerformancePage = () => {
                 selectionError={selectionError}
                 portfolioError={portfolioPerformanceQuery.error?.message ?? null}
                 portfolioLoading={portfolioPerformanceQuery.loading}
+                parametersPanel={parametersPanel}
                 performanceRows={performanceRows}
                 mobilePerformanceRows={mobilePerformanceRows}
                 expandedPortfolioKeys={expandedPortfolioKeys}
@@ -1074,10 +968,6 @@ const PerformancePage = () => {
                 zoomRange={zoomRange}
                 totalSummary={totalSummary}
                 performanceTotals={performanceTotals}
-                sliderDomain={sliderDomain}
-                sliderValues={sliderValues}
-                onSliderChange={handleSliderChange}
-                onSliderAfterChange={handleSliderAfterChange}
                 onTogglePortfolioExpanded={togglePortfolioExpanded}
                 onListSelectionChange={handleListSelectionChange}
                 formatAmount={formatAmount}
@@ -1099,10 +989,6 @@ const PerformancePage = () => {
               totalSummary={totalSummary}
               performanceTotals={performanceTotals}
               zoomRange={zoomRange}
-              sliderDomain={sliderDomain}
-              sliderValues={sliderValues}
-              onSliderChange={handleSliderChange}
-              onSliderAfterChange={handleSliderAfterChange}
               selectedRowKeys={selectedRowKeys}
               sortState={sortState}
               onRowSelectionChange={handleRowSelectionChange}

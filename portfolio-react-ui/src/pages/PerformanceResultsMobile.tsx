@@ -1,9 +1,8 @@
-import { Alert, Carousel, Checkbox, Slider, Space, Spin, Typography } from "antd";
+import { Alert, Carousel, Checkbox, Space, Spin, Typography } from "antd";
 import { DownOutlined, RightOutlined } from "@ant-design/icons";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
 import { useEffect, useRef } from "react";
-import dayjs from "dayjs";
 import type {
   PerformanceRow,
   PerformanceTotals,
@@ -18,6 +17,7 @@ type PerformanceResultsMobileProps = {
   selectionLoading: boolean;
   hasChartData: boolean;
   chartOptions: EChartsOption;
+  parametersPanel: React.ReactNode;
   selectionError: string | null;
   portfolioError: string | null;
   portfolioLoading: boolean;
@@ -28,10 +28,6 @@ type PerformanceResultsMobileProps = {
   zoomRange: ZoomRange;
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
-  sliderDomain: { min: number; max: number } | null;
-  sliderValues: [number, number] | null;
-  onSliderChange: (values: [number, number]) => void;
-  onSliderAfterChange: (values: [number, number]) => void;
   onTogglePortfolioExpanded: (rowKey: string) => void;
   onListSelectionChange: (row: PerformanceRow, checked: boolean) => void;
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
@@ -45,6 +41,7 @@ const PerformanceResultsMobile = ({
   selectionLoading,
   hasChartData,
   chartOptions,
+  parametersPanel,
   selectionError,
   portfolioError,
   portfolioLoading,
@@ -55,10 +52,6 @@ const PerformanceResultsMobile = ({
   zoomRange,
   totalSummary,
   performanceTotals,
-  sliderDomain,
-  sliderValues,
-  onSliderChange,
-  onSliderAfterChange,
   onTogglePortfolioExpanded,
   onListSelectionChange,
   formatAmount,
@@ -95,12 +88,19 @@ const PerformanceResultsMobile = ({
             className="performance-mobile-tab"
             onClick={() => carouselRef.current?.goTo(0)}
           >
-            Graphe
+            Paramètres
           </button>
           <button
             type="button"
             className="performance-mobile-tab"
             onClick={() => carouselRef.current?.goTo(1)}
+          >
+            Graphe
+          </button>
+          <button
+            type="button"
+            className="performance-mobile-tab"
+            onClick={() => carouselRef.current?.goTo(2)}
           >
             Liste
           </button>
@@ -111,6 +111,9 @@ const PerformanceResultsMobile = ({
           draggable
           swipeToSlide
         >
+          <div className="performance-mobile-panel performance-mobile-panel--params">
+            {parametersPanel}
+          </div>
           <div className="performance-mobile-panel performance-mobile-panel--chart">
             {accumulatedLoading ? (
               <Spin />
@@ -130,30 +133,6 @@ const PerformanceResultsMobile = ({
                         ref={chartRef}
                       />
                     </div>
-                    {sliderDomain ? (
-                      <Slider
-                        range
-                        min={sliderDomain.min}
-                        max={sliderDomain.max}
-                        value={sliderValues ?? undefined}
-                        tipFormatter={(value) =>
-                          value ? dayjs(value).format("YYYY-MM-DD") : undefined
-                        }
-                        onChange={(value) =>
-                          Array.isArray(value) &&
-                          value.length === 2 &&
-                          onSliderChange([Number(value[0]), Number(value[1])])
-                        }
-                        onAfterChange={(value) =>
-                          Array.isArray(value) &&
-                          value.length === 2 &&
-                          onSliderAfterChange([
-                            Number(value[0]),
-                            Number(value[1]),
-                          ])
-                        }
-                      />
-                    ) : null}
                   </Space>
                 ) : (
                   <Typography.Text type="secondary">
