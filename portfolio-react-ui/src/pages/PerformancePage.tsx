@@ -167,7 +167,7 @@ const PerformancePage = () => {
     () => window.innerWidth <= 500
   );
   const skipNextSaveRef = useRef(false);
-  const applyZoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [sliderRange, setSliderRange] = useState<[number, number] | null>(null);
   const isNativePlatform = Capacitor.isNativePlatform();
 
   const { data: filtersData, loading: filtersLoading } = useQuery<{
@@ -267,8 +267,12 @@ const PerformancePage = () => {
     if (!formattedDates?.startDate || !formattedDates?.endDate) {
       setZoomRange(null);
       setAppliedZoomRange(null);
+      setSliderRange(null);
       return;
     }
+
+    const sliderStart = dayjs(formattedDates.startDate).valueOf();
+    const sliderEnd = dayjs(formattedDates.endDate).valueOf();
 
     setZoomRange({
       startDate: formattedDates.startDate,
@@ -278,6 +282,7 @@ const PerformancePage = () => {
       startDate: formattedDates.startDate,
       endDate: formattedDates.endDate,
     });
+    setSliderRange([sliderStart, sliderEnd]);
   }, [formattedDates?.startDate, formattedDates?.endDate]);
 
   useEffect(() => {
@@ -474,51 +479,59 @@ const PerformancePage = () => {
     [brushSelection]
   );
 
-  const handleBrushSelection = useCallback(
-    (event: {
-      batch?: Array<{
-        start?: number;
-        end?: number;
-        startValue?: number;
-        endValue?: number;
-      }>;
-      start?: number;
-      end?: number;
-      startValue?: number;
-      endValue?: number;
-    }) => {
-      const payload = event?.batch?.[0] ?? event;
-      const resolveFromPercent = (percent?: number) => {
-        if (percent === undefined || percent === null) return null;
-        if (!brushData.length) return null;
-        const index = Math.round((percent / 100) * (brushData.length - 1));
-        return brushData[index]?.timestamp ?? null;
+  const sliderDomain = useMemo(() => {
+    if (brushData.length) {
+      return {
+        min: brushData[0].timestamp,
+        max: brushData[brushData.length - 1].timestamp,
       };
+    }
+    return null;
+  }, [brushData]);
 
-      const startValue =
-        payload?.startValue ?? resolveFromPercent(payload?.start);
-      const endValue = payload?.endValue ?? resolveFromPercent(payload?.end);
+  const sliderValues = useMemo(() => {
+    if (sliderRange) return sliderRange;
+    if (zoomRange?.startDate && zoomRange?.endDate) {
+      return [
+        dayjs(zoomRange.startDate).valueOf(),
+        dayjs(zoomRange.endDate).valueOf(),
+      ] as [number, number];
+    }
+    if (sliderDomain) {
+      return [sliderDomain.min, sliderDomain.max] as [number, number];
+    }
+    return null;
+  }, [sliderDomain, sliderRange, zoomRange]);
 
-      if (
-        startValue === undefined ||
-        endValue === undefined ||
-        startValue === null ||
-        endValue === null
-      ) {
-        return;
-      }
-      const startDate = dayjs(startValue).format("YYYY-MM-DD");
-      const endDate = dayjs(endValue).format("YYYY-MM-DD");
-      setZoomRange({ startDate, endDate });
-      if (applyZoomTimeoutRef.current) {
-        clearTimeout(applyZoomTimeoutRef.current);
-      }
-      applyZoomTimeoutRef.current = setTimeout(() => {
-        setAppliedZoomRange({ startDate, endDate });
-      }, 200);
-    },
-    [brushData]
-  );
+  useEffect(() => {
+    if (!sliderDomain) return;
+    setSliderRange((current) => {
+      if (!current) return [sliderDomain.min, sliderDomain.max];
+      const [start, end] = current;
+      const next: [number, number] = [
+        Math.max(sliderDomain.min, start),
+        Math.min(sliderDomain.max, end),
+      ];
+      return next;
+    });
+  }, [sliderDomain]);
+
+  const handleSliderChange = (values: [number, number]) => {
+    if (!values?.length) return;
+    const [start, end] = values;
+    const startDate = dayjs(start).format("YYYY-MM-DD");
+    const endDate = dayjs(end).format("YYYY-MM-DD");
+    setSliderRange(values);
+    setZoomRange({ startDate, endDate });
+  };
+
+  const handleSliderAfterChange = (values: [number, number]) => {
+    if (!values?.length) return;
+    const [start, end] = values;
+    const startDate = dayjs(start).format("YYYY-MM-DD");
+    const endDate = dayjs(end).format("YYYY-MM-DD");
+    setAppliedZoomRange({ startDate, endDate });
+  };
 
   const chartOptions = useMemo<EChartsOption>(() => {
     const series = [];
@@ -564,7 +577,7 @@ const PerformancePage = () => {
         },
       },
       yAxis: {
-        type: "time",
+        type: "value",
         axisLabel: {
           // ellipsis: true,
           inside: true,
@@ -576,21 +589,6 @@ const PerformancePage = () => {
             }),
         },
       },
-      dataZoom: [
-        {
-          id: "performance-zoom",
-          type: "slider",
-          xAxisIndex: 0,
-          height: 24,
-          bottom: 0,
-          rangeMode: ["value", "value"],
-          filterMode: "none",
-          throttle: 50,
-          startValue: brushRange?.startValue,
-          endValue: brushRange?.endValue,
-          snap: true,
-        },
-      ],
       series,
     };
   }, [brushRange, chartData, selectionSeries]);
@@ -1076,7 +1074,10 @@ const PerformancePage = () => {
                 zoomRange={zoomRange}
                 totalSummary={totalSummary}
                 performanceTotals={performanceTotals}
-                onBrushSelection={handleBrushSelection}
+                sliderDomain={sliderDomain}
+                sliderValues={sliderValues}
+                onSliderChange={handleSliderChange}
+                onSliderAfterChange={handleSliderAfterChange}
                 onTogglePortfolioExpanded={togglePortfolioExpanded}
                 onListSelectionChange={handleListSelectionChange}
                 formatAmount={formatAmount}
@@ -1098,9 +1099,12 @@ const PerformancePage = () => {
               totalSummary={totalSummary}
               performanceTotals={performanceTotals}
               zoomRange={zoomRange}
+              sliderDomain={sliderDomain}
+              sliderValues={sliderValues}
+              onSliderChange={handleSliderChange}
+              onSliderAfterChange={handleSliderAfterChange}
               selectedRowKeys={selectedRowKeys}
               sortState={sortState}
-              onBrushSelection={handleBrushSelection}
               onRowSelectionChange={handleRowSelectionChange}
               onTableChange={handleTableChange}
               formatAmount={formatAmount}

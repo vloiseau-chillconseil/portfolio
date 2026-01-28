@@ -1,8 +1,9 @@
-import { Alert, Carousel, Checkbox, Space, Spin, Typography } from "antd";
+import { Alert, Carousel, Checkbox, Slider, Space, Spin, Typography } from "antd";
 import { DownOutlined, RightOutlined } from "@ant-design/icons";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
+import dayjs from "dayjs";
 import type {
   PerformanceRow,
   PerformanceTotals,
@@ -27,7 +28,10 @@ type PerformanceResultsMobileProps = {
   zoomRange: ZoomRange;
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
-  onBrushSelection: (event: unknown) => void;
+  sliderDomain: { min: number; max: number } | null;
+  sliderValues: [number, number] | null;
+  onSliderChange: (values: [number, number]) => void;
+  onSliderAfterChange: (values: [number, number]) => void;
   onTogglePortfolioExpanded: (rowKey: string) => void;
   onListSelectionChange: (row: PerformanceRow, checked: boolean) => void;
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
@@ -51,13 +55,18 @@ const PerformanceResultsMobile = ({
   zoomRange,
   totalSummary,
   performanceTotals,
-  onBrushSelection,
+  sliderDomain,
+  sliderValues,
+  onSliderChange,
+  onSliderAfterChange,
   onTogglePortfolioExpanded,
   onListSelectionChange,
   formatAmount,
   formatPercent,
 }: PerformanceResultsMobileProps) => {
   const carouselRef = useRef<{ goTo: (slide: number) => void } | null>(null);
+  const chartRef = useRef<ReactECharts | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <Space direction="vertical" size="large" className="page-stack">
@@ -109,13 +118,42 @@ const PerformanceResultsMobile = ({
               <Spin spinning={selectionLoading}>
                 {hasChartData ? (
                   <Space direction="vertical" size="small" className="page-stack">
-                    <ReactECharts
-                      option={chartOptions}
-                      style={{ height: 360, width: "100%" }}
-                      notMerge
-                      lazyUpdate
-                      onEvents={{ datazoom: onBrushSelection }}
-                    />
+                    <div
+                      className="performance-mobile-chart-area"
+                      ref={chartContainerRef}
+                    >
+                      <ReactECharts
+                        option={chartOptions}
+                        style={{ height: "100%", width: "100%" }}
+                        notMerge
+                        lazyUpdate
+                        ref={chartRef}
+                      />
+                    </div>
+                    {sliderDomain ? (
+                      <Slider
+                        range
+                        min={sliderDomain.min}
+                        max={sliderDomain.max}
+                        value={sliderValues ?? undefined}
+                        tipFormatter={(value) =>
+                          value ? dayjs(value).format("YYYY-MM-DD") : undefined
+                        }
+                        onChange={(value) =>
+                          Array.isArray(value) &&
+                          value.length === 2 &&
+                          onSliderChange([Number(value[0]), Number(value[1])])
+                        }
+                        onAfterChange={(value) =>
+                          Array.isArray(value) &&
+                          value.length === 2 &&
+                          onSliderAfterChange([
+                            Number(value[0]),
+                            Number(value[1]),
+                          ])
+                        }
+                      />
+                    ) : null}
                   </Space>
                 ) : (
                   <Typography.Text type="secondary">

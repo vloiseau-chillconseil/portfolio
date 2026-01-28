@@ -1,7 +1,8 @@
-import { Alert, Space, Spin, Table, Typography } from "antd";
+import { Alert, Slider, Space, Spin, Table, Typography } from "antd";
 import type { TableProps } from "antd";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
+import dayjs from "dayjs";
 import type {
   PerformanceRow,
   PerformanceTotals,
@@ -24,9 +25,12 @@ type PerformanceResultsDesktopProps = {
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
   zoomRange: ZoomRange;
+  sliderDomain: { min: number; max: number } | null;
+  sliderValues: [number, number] | null;
+  onSliderChange: (values: [number, number]) => void;
+  onSliderAfterChange: (values: [number, number]) => void;
   selectedRowKeys: string[];
   sortState: SortState;
-  onBrushSelection: (event: unknown) => void;
   onRowSelectionChange: (keys: Array<string | number>, rows: PerformanceRow[]) => void;
   onTableChange: TableProps<PerformanceRow>["onChange"];
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
@@ -47,9 +51,12 @@ const PerformanceResultsDesktop = ({
   totalSummary,
   performanceTotals,
   zoomRange,
+  sliderDomain,
+  sliderValues,
+  onSliderChange,
+  onSliderAfterChange,
   selectedRowKeys,
   sortState,
-  onBrushSelection,
   onRowSelectionChange,
   onTableChange,
   formatAmount,
@@ -88,8 +95,28 @@ const PerformanceResultsDesktop = ({
                     style={{ height: 520, width: "100%" }}
                     notMerge
                     lazyUpdate
-                    onEvents={{ datazoom: onBrushSelection }}
                   />
+                  {sliderDomain ? (
+                    <Slider
+                      range
+                      min={sliderDomain.min}
+                      max={sliderDomain.max}
+                      value={sliderValues ?? undefined}
+                      tipFormatter={(value) =>
+                        value ? dayjs(value).format("YYYY-MM-DD") : undefined
+                      }
+                      onChange={(value) =>
+                        Array.isArray(value) &&
+                        value.length === 2 &&
+                        onSliderChange([Number(value[0]), Number(value[1])])
+                      }
+                      onAfterChange={(value) =>
+                        Array.isArray(value) &&
+                        value.length === 2 &&
+                        onSliderAfterChange([Number(value[0]), Number(value[1])])
+                      }
+                    />
+                  ) : null}
                 </Space>
               ) : (
                 <Typography.Text type="secondary">
