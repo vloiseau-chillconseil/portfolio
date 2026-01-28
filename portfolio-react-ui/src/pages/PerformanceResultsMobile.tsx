@@ -1,5 +1,12 @@
 import { Alert, Button, Carousel, Checkbox, Segmented, Space, Spin, Typography } from "antd";
-import { AlignLeftOutlined, UnorderedListOutlined, DownOutlined, UpOutlined } from "@ant-design/icons";
+import {
+  AlignLeftOutlined,
+  UnorderedListOutlined,
+  DownOutlined,
+  UpOutlined,
+  SortAscendingOutlined,
+  SortDescendingOutlined,
+} from "@ant-design/icons";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
 import { useEffect, useRef, useState } from "react";
@@ -30,12 +37,18 @@ type PerformanceResultsMobileProps = {
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
   showFlatSecurities: boolean;
+  listSortDirection: "asc" | "desc";
+  listPerfDirection: "asc" | "desc";
+  onToggleListSortDirection: () => void;
+  onTogglePerfSortDirection: () => void;
   onToggleFlatSecurities: () => void;
   onTogglePortfolioExpanded: (rowKey: string) => void;
   onListSelectionChange: (row: PerformanceRow, checked: boolean) => void;
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
   formatPercent: (value: number | null | undefined) => string;
 };
+
+type DisplayRow = PerformanceRow & { isChild?: boolean };
 
 const PerformanceResultsMobile = ({
   delta,
@@ -57,6 +70,10 @@ const PerformanceResultsMobile = ({
   totalSummary,
   performanceTotals,
   showFlatSecurities,
+  listSortDirection,
+  listPerfDirection,
+  onToggleListSortDirection,
+  onTogglePerfSortDirection,
   onToggleFlatSecurities,
   onTogglePortfolioExpanded,
   onListSelectionChange,
@@ -65,6 +82,16 @@ const PerformanceResultsMobile = ({
 }: PerformanceResultsMobileProps) => {
   const carouselRef = useRef<{ goTo: (slide: number) => void } | null>(null);
   const [activeSlide, setActiveSlide] = useState(0);
+
+  const listRows: DisplayRow[] = showFlatSecurities
+    ? securitiesRows
+    : mobilePerformanceRows.flatMap((row) => {
+        const items: DisplayRow[] = [{ ...row, isChild: false }];
+        if (row.children?.length && expandedPortfolioKeys.includes(row.key)) {
+          items.push(...row.children.map((child) => ({ ...child, isChild: true })));
+        }
+        return items;
+      });
 
   return (
     <Space direction="vertical" size="large" className="page-stack">
@@ -151,19 +178,48 @@ const PerformanceResultsMobile = ({
               <Spin />
             ) : performanceRows.length ? (
               <div className="performance-table-mobile">
-                <Button
-                  block
-                  icon={
-                    showFlatSecurities ? <AlignLeftOutlined /> : <UnorderedListOutlined />
-                  }
-                  onClick={onToggleFlatSecurities}
-                >
-                  {showFlatSecurities ? "Groupé par portefeuille" : "Titres à plat"}
-                </Button>
+                <Space direction="vertical" size="small" style={{ width: "100%" }}>
+                  <Button
+                    block
+                    icon={
+                      showFlatSecurities ? <AlignLeftOutlined /> : <UnorderedListOutlined />
+                    }
+                    onClick={onToggleFlatSecurities}
+                  >
+                    {showFlatSecurities ? "Groupé par portefeuille" : "Titres à plat"}
+                  </Button>
+                  <Button
+                    block
+                    icon={
+                      listSortDirection === "asc" ? (
+                        <SortAscendingOutlined />
+                      ) : (
+                        <SortDescendingOutlined />
+                      )
+                    }
+                    onClick={onToggleListSortDirection}
+                  >
+                    {listSortDirection === "asc" ? "Tri A → Z" : "Tri Z → A"}
+                  </Button>
+                  <Button
+                    block
+                    icon={
+                      listPerfDirection === "asc" ? (
+                        <SortAscendingOutlined />
+                      ) : (
+                        <SortDescendingOutlined />
+                      )
+                    }
+                    onClick={onTogglePerfSortDirection}
+                  >
+                    {listPerfDirection === "asc"
+                      ? "Performance € croissante"
+                      : "Performance € décroissante"}
+                  </Button>
+                </Space>
                 <div className="performance-list">
                   <div className="performance-list-item performance-list-total">
                     <div className="performance-list-header">
-                      <span className="performance-list-checkbox" />
                       <Typography.Text strong className="performance-list-title">
                         Total
                       </Typography.Text>
@@ -188,96 +244,66 @@ const PerformanceResultsMobile = ({
                       </div>
                     </div>
                   </div>
-                  {(showFlatSecurities ? securitiesRows : mobilePerformanceRows).map(
-                    (row) => (
-                      <div key={row.key} className="performance-list-item">
-                        <div className="performance-list-header">
-                          <Typography.Text strong className="performance-list-title">
-                            {row.name}
-                          </Typography.Text>
-                        </div>
-                        <div className="performance-list-values">
-                          {row.children?.length ? (
-                            <button
-                              type="button"
-                              className="performance-list-toggle-button"
-                              onClick={() => onTogglePortfolioExpanded(row.key)}
-                              aria-label={
-                                expandedPortfolioKeys.includes(row.key)
-                                  ? "Réduire"
-                                  : "Déployer"
-                              }
-                            >
-                              {expandedPortfolioKeys.includes(row.key) ? (
+                  {listRows.map((row) => (
+                    <div
+                      key={row.key}
+                      className={`performance-list-item${
+                        row.isChild ? " performance-list-item--child" : ""
+                      }`}
+                    >
+                      <div className="performance-list-header">
+                        <Typography.Text strong={row.rowType === "portfolio" ? true : false} className="performance-list-title">
+                          {row.name}
+                        </Typography.Text>
+                        {row.rowType === "portfolio" && row.children?.length ? (
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={
+                              expandedPortfolioKeys.includes(row.key) ? (
                                 <UpOutlined />
                               ) : (
                                 <DownOutlined />
-                              )}
-                            </button>
-                          ) : (
-                            <span className="performance-list-toggle-spacer" />
-                          )}
-                          <Checkbox
-                            checked={selectedRowKeys.includes(row.key)}
-                            onChange={(event) =>
-                              onListSelectionChange(row, event.target.checked)
+                              )
+                            }
+                            onClick={() => onTogglePortfolioExpanded(row.key)}
+                            aria-label={
+                              expandedPortfolioKeys.includes(row.key)
+                                ? "Réduire"
+                                : "Déployer"
                             }
                           />
-                          <div className="performance-list-metrics">
-                            <Typography.Text className="performance-list-value">
-                              {formatAmount(row.deltaAmount, row.deltaCurrency)}
-                            </Typography.Text>
-                            <Typography.Text
-                              type="secondary"
-                              className="performance-list-value"
-                            >
-                              {formatPercent(row.deltaPercent)}
-                            </Typography.Text>
-                          </div>
-                        </div>
-                        {row.children?.length &&
-                        expandedPortfolioKeys.includes(row.key) ? (
-                          <div className="performance-list-children">
-                            {row.children.map((child) => (
-                              <div key={child.key} className="performance-list-item">
-                                <div className="performance-list-header">
-                                  <Typography.Text className="performance-list-title">
-                                    {child.name}
-                                  </Typography.Text>
-                                </div>
-                                <div className="performance-list-values">
-                                  <span className="performance-list-toggle-spacer" />
-                                  <Checkbox
-                                    checked={selectedRowKeys.includes(child.key)}
-                                    onChange={(event) =>
-                                      onListSelectionChange(
-                                        child,
-                                        event.target.checked
-                                      )
-                                    }
-                                  />
-                                  <div className="performance-list-metrics">
-                                    <Typography.Text className="performance-list-value">
-                                      {formatAmount(
-                                        child.deltaAmount,
-                                        child.deltaCurrency
-                                      )}
-                                    </Typography.Text>
-                                    <Typography.Text
-                                      type="secondary"
-                                      className="performance-list-value"
-                                    >
-                                      {formatPercent(child.deltaPercent)}
-                                    </Typography.Text>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
                         ) : null}
                       </div>
-                    )
-                  )}
+                      <div className="performance-list-values">
+                        <Checkbox
+                          checked={selectedRowKeys.includes(row.key)}
+                          onChange={(event) =>
+                            onListSelectionChange(row, event.target.checked)
+                          }
+                        />
+                        <div className="performance-list-metrics">
+                          <Typography.Text
+                            type="secondary"
+                            className="performance-list-value"
+                          >
+                            {formatPercent(row.deltaPercent)}
+                          </Typography.Text>
+                          <Typography.Text
+                            className="performance-list-value"
+                            style={{
+                              color:
+                                row.deltaAmount && row.deltaAmount < 0
+                                  ? "#cf1322"
+                                  : "#3f8600",
+                            }}
+                          >
+                            {formatAmount(row.deltaAmount, row.deltaCurrency)}
+                          </Typography.Text>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : (

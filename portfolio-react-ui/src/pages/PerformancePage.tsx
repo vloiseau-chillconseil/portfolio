@@ -167,6 +167,15 @@ const PerformancePage = () => {
   );
   const skipNextSaveRef = useRef(false);
   const [showFlatSecurities, setShowFlatSecurities] = useState(false);
+  const [listSortMode, setListSortMode] = useState<"alpha" | "performance">(
+    "performance"
+  );
+  const [listSortDirection, setListSortDirection] = useState<"asc" | "desc">(
+    "desc"
+  );
+  const [listPerfDirection, setListPerfDirection] = useState<"asc" | "desc">(
+    "desc"
+  );
   const isNativePlatform = Capacitor.isNativePlatform();
 
   const { data: filtersData, loading: filtersLoading } = useQuery<{
@@ -559,22 +568,54 @@ const PerformancePage = () => {
     });
   }, [portfolioPerformanceQuery.data]);
 
-  const mobilePerformanceRows = useMemo(() => {
-    return [...performanceRows].sort(
-      (left, right) => (right.deltaAmount ?? 0) - (left.deltaAmount ?? 0)
+  const compareRows = useCallback(
+    (a: PerformanceRow, b: PerformanceRow) => {
+      if (listSortMode === "alpha") {
+        const nameA = a.name ?? "";
+        const nameB = b.name ?? "";
+        return listSortDirection === "asc"
+          ? nameA.localeCompare(nameB, "fr")
+          : nameB.localeCompare(nameA, "fr");
+      }
+      const leftDelta = a.deltaAmount ?? 0;
+      const rightDelta = b.deltaAmount ?? 0;
+      return listPerfDirection === "asc" ? leftDelta - rightDelta : rightDelta - leftDelta;
+    },
+    [listPerfDirection, listSortDirection, listSortMode]
+  );
+
+  const sortRowsWithChildren = useCallback(
+    (rows: PerformanceRow[]) => {
+      const sortedParents = [...rows].sort(compareRows);
+      return sortedParents.map((row) => {
+        if (!row.children?.length) return row;
+        const sortedChildren = [...row.children].sort(compareRows);
+        return { ...row, children: sortedChildren };
+      });
+    },
+    [compareRows]
+  );
+
+  const sortedPerformanceRows = useMemo(
+    () => sortRowsWithChildren(performanceRows),
+    [performanceRows, sortRowsWithChildren]
+  );
+
+  const securitiesOnlyRows = useMemo(() => {
+    const rows = sortedPerformanceRows.flatMap((row) =>
+      row.children?.length ? row.children.map((child) => ({ ...child })) : []
     );
-  }, [performanceRows]);
+    rows.sort(compareRows);
+    return rows;
+  }, [compareRows, sortedPerformanceRows]);
+
+  const mobilePerformanceRows = useMemo(() => sortedPerformanceRows, [sortedPerformanceRows]);
 
   const flatPerformanceRows = useMemo(() => {
     const flatten = (rows: PerformanceRow[]) =>
       rows.flatMap((row) => [row, ...(row.children ? flatten(row.children) : [])]);
-    return flatten(performanceRows);
-  }, [performanceRows]);
-
-  const securitiesOnlyRows = useMemo(
-    () => flatPerformanceRows.filter((row) => row.rowType === "security"),
-    [flatPerformanceRows]
-  );
+    return flatten(sortedPerformanceRows);
+  }, [sortedPerformanceRows]);
 
   useEffect(() => {
     if (!selectedRowKeys.length) {
@@ -705,7 +746,6 @@ const PerformancePage = () => {
         : [...prev, rowKey]
     );
   };
-
 
   const handleTableChange = (
     _pagination: unknown,
@@ -968,34 +1008,39 @@ const PerformancePage = () => {
                 selectionLoading={selectionLoading}
                 hasChartData={hasChartData}
                 chartOptions={chartOptions}
-                selectionError={selectionError}
-                portfolioError={portfolioPerformanceQuery.error?.message ?? null}
-                portfolioLoading={portfolioPerformanceQuery.loading}
-                parametersPanel={parametersPanel}
-                performanceRows={performanceRows}
-                mobilePerformanceRows={mobilePerformanceRows}
-                showFlatSecurities={showFlatSecurities}
-                securitiesRows={securitiesOnlyRows}
-                onToggleFlatSecurities={() =>
-                  setShowFlatSecurities((previous) => !previous)
-                }
-                expandedPortfolioKeys={expandedPortfolioKeys}
-                selectedRowKeys={selectedRowKeys}
-                zoomRange={zoomRange}
-                totalSummary={totalSummary}
-                performanceTotals={performanceTotals}
+              selectionError={selectionError}
+              portfolioError={portfolioPerformanceQuery.error?.message ?? null}
+              portfolioLoading={portfolioPerformanceQuery.loading}
+              parametersPanel={parametersPanel}
+              performanceRows={performanceRows}
+              mobilePerformanceRows={mobilePerformanceRows}
               showFlatSecurities={showFlatSecurities}
               securitiesRows={securitiesOnlyRows}
+              listSortDirection={listSortDirection}
+              listPerfDirection={listPerfDirection}
+              onToggleListSortDirection={() => {
+                setListSortMode("alpha");
+                setListSortDirection((previous) => (previous === "asc" ? "desc" : "asc"));
+              }}
+              onTogglePerfSortDirection={() => {
+                setListSortMode("performance");
+                setListPerfDirection((previous) => (previous === "asc" ? "desc" : "asc"));
+              }}
               onToggleFlatSecurities={() =>
                 setShowFlatSecurities((previous) => !previous)
               }
+              expandedPortfolioKeys={expandedPortfolioKeys}
+              selectedRowKeys={selectedRowKeys}
+              zoomRange={zoomRange}
+              totalSummary={totalSummary}
+              performanceTotals={performanceTotals}
               onTogglePortfolioExpanded={togglePortfolioExpanded}
               onListSelectionChange={handleListSelectionChange}
               formatAmount={formatAmount}
               formatPercent={formatPercent}
             />
-            )
-          ) : (
+          )
+        ) : (
           <PerformanceResultsDesktop
             delta={delta}
             deltaLoading={deltaQuery.loading}

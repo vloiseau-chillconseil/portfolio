@@ -152,6 +152,11 @@ body.app-mode-desktop {
   padding: 12px;
 }
 
+.performance-list-item--child {
+  margin-left: 12px;
+  border-style: dashed;
+}
+
 .performance-list-header {
   display: flex;
   align-items: center;
