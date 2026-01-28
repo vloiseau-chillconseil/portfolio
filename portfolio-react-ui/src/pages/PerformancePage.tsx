@@ -1,24 +1,33 @@
 import { gql, useApolloClient, useMutation, useQuery } from "@apollo/client";
 import { Capacitor } from "@capacitor/core";
 import {
+  Alert,
   Card,
+  Carousel,
   DatePicker,
   Dropdown,
   Select,
   Space,
   Typography,
-  Alert,
-  Spin,
   message,
-  Table,
-  Checkbox,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
+import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactECharts from "echarts-for-react";
+import type { CarouselRef } from "antd/es/carousel";
 import { useCurrentClient } from "../state/currentClientContext";
-import { DownOutlined, RightOutlined, SyncOutlined } from "@ant-design/icons";
+import { SyncOutlined } from "@ant-design/icons";
 import type { MenuProps } from "antd";
+import PerformanceResultsDesktop from "./PerformanceResultsDesktop";
+import PerformanceResultsMobile from "./PerformanceResultsMobile";
+import type {
+  PerformanceRow,
+  PerformanceTotals,
+  SortState,
+  TotalSummary,
+} from "./performancePageViewTypes";
+
+const SHOW_MOBILE_PLACEHOLDERS = false;
 
 const CLIENT_FILTERS_QUERY = gql`
   query ClientFilters($clientId: String) {
@@ -123,20 +132,6 @@ const UPDATE_QUOTES_MUTATION = gql`
   }
 `;
 
-type PerformanceRow = {
-  key: string;
-  name: string;
-  deltaAmount: number | null;
-  deltaCurrency: string | null;
-  deltaPercent: number | null;
-  startAmount: number | null;
-  startCurrency: string | null;
-  portfolioId: string | null;
-  securityId: string | null;
-  rowType: "portfolio" | "security";
-  children?: PerformanceRow[];
-};
-
 type SelectionSeries = {
   key: string;
   name: string;
@@ -155,14 +150,19 @@ const PerformancePage = () => {
   >(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<PerformanceRow[]>([]);
-  const [sortState, setSortState] = useState<{
-    columnKey: string | null;
-    order: "ascend" | "descend" | null;
-  }>({ columnKey: null, order: null });
+  const [sortState, setSortState] = useState<SortState>({
+    columnKey: null,
+    order: null,
+  });
   const [selectionSeries, setSelectionSeries] = useState<SelectionSeries[]>([]);
   const [selectionLoading, setSelectionLoading] = useState(false);
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const [expandedPortfolioKeys, setExpandedPortfolioKeys] = useState<string[]>([]);
+  const mobileCarouselRef = useRef<CarouselRef | null>(null);
+  const [mobileActiveSlide, setMobileActiveSlide] = useState(0);
+  const [isMobileLayout, setIsMobileLayout] = useState(
+    () => window.innerWidth <= 375
+  );
   const skipNextSaveRef = useRef(false);
   const isNativePlatform = Capacitor.isNativePlatform();
 
@@ -233,6 +233,19 @@ const PerformancePage = () => {
       setExpandedPortfolioKeys([]);
     }
   }, [currentClient?.id]);
+
+  useEffect(() => {
+    const updateLayoutMode = () => {
+      setIsMobileLayout(window.innerWidth <= 375);
+    };
+
+    updateLayoutMode();
+    window.addEventListener("resize", updateLayoutMode);
+
+    return () => {
+      window.removeEventListener("resize", updateLayoutMode);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isNativePlatform) return;
@@ -335,7 +348,7 @@ const PerformancePage = () => {
       startDate: zoomRange?.startDate,
       endDate: zoomRange?.endDate,
     },
-    fetchPolicy: "network-only",
+    fetchPolicy: "no-cache",
     skip: !shouldFetch || !zoomRange,
   });
 
@@ -363,15 +376,6 @@ const PerformancePage = () => {
     return mapDeltaPoints(points);
   }, [accumulatedQuery.data, mapDeltaPoints]);
 
-  const chartDates = useMemo(() => {
-    if (chartData.length) {
-      return chartData.map((point) => point.date);
-    }
-    if (selectionSeries.length) {
-      return selectionSeries[0].points.map((point) => point.date);
-    }
-    return [];
-  }, [chartData, selectionSeries]);
   
 
   const filters = useMemo(
@@ -430,130 +434,158 @@ const PerformancePage = () => {
     setDateRange(null);
   };
 
-  const chartSeries = useMemo(() => {
-    const baseSeries = chartData.length
+  const chartSeries = useMemo<ApexAxisChartSeries>(() => {
+    const baseSeriesData = chartData.map((point) => ({
+      x: point.timestamp,
+      y: point.amount,
+    }));
+    const baseSeries = baseSeriesData.length
       ? [
           {
             name: "Accumulated Delta",
-            type: "line",
-            smooth: false,
-            data: chartData.map((point) => point.amount),
-            showSymbol: false,
+            data: baseSeriesData,
           },
         ]
       : [];
 
-    const selectionLines = selectionSeries.map((series) => {
-      const valuesByDate = new Map(
-        series.points.map((point) => [point.date, point.amount])
-      );
-      return {
-        name: series.name,
-        type: "line",
-        smooth: false,
-        data: chartDates.map((date) => valuesByDate.get(date) ?? null),
-        showSymbol: false,
-      };
-    });
+    const selectionLines = selectionSeries.map((series) => ({
+      name: series.name,
+      data: series.points.map((point) => ({
+        x: point.timestamp,
+        y: point.amount,
+      })),
+    }));
 
     return [...baseSeries, ...selectionLines];
-  }, [chartData, chartDates, selectionSeries]);
+  }, [chartData, selectionSeries]);
 
   const hasChartData = useMemo(
     () => chartSeries.some((series) => series.data?.length),
     [chartSeries]
   );
 
-  const chartOption = useMemo(() => {
-    return {
-      tooltip: {
-        trigger: "axis",
+  const brushSeries = useMemo<ApexAxisChartSeries>(() => {
+    const sourcePoints = chartData.length
+      ? chartData
+      : selectionSeries[0]?.points ?? [];
+    const baseSeriesData = sourcePoints.map((point) => ({
+      x: point.timestamp,
+      y: point.amount,
+    }));
+    return baseSeriesData.length
+      ? [{ name: "Overview", data: baseSeriesData }]
+      : [];
+  }, [chartData, selectionSeries]);
+
+  const brushSelection = useMemo(() => {
+    if (zoomRange?.startDate && zoomRange?.endDate) {
+      return {
+        min: dayjs(zoomRange.startDate).valueOf(),
+        max: dayjs(zoomRange.endDate).valueOf(),
+      };
+    }
+    if (chartData.length) {
+      return {
+        min: chartData[0].timestamp,
+        max: chartData[chartData.length - 1].timestamp,
+      };
+    }
+    if (selectionSeries.length) {
+      return {
+        min: selectionSeries[0].points[0]?.timestamp ?? 0,
+        max:
+          selectionSeries[0].points[
+            selectionSeries[0].points.length - 1
+          ]?.timestamp ?? 0,
+      };
+    }
+    return null;
+  }, [chartData, selectionSeries, zoomRange]);
+
+  const handleBrushSelection = useCallback(
+    (
+      _chartContext: unknown,
+      { xaxis }: { xaxis?: { min?: number; max?: number } }
+    ) => {
+      if (!xaxis?.min || !xaxis?.max) {
+        return;
+      }
+      const startDate = dayjs(xaxis.min).format("YYYY-MM-DD");
+      const endDate = dayjs(xaxis.max).format("YYYY-MM-DD");
+      setZoomRange({ startDate, endDate });
+    },
+    []
+  );
+
+  const chartOptions = useMemo<ApexOptions>(
+    () => ({
+      chart: {
+        id: "performance-main",
+        type: "line",
+        toolbar: { show: false },
+        zoom: { enabled: false },
+        animations: { enabled: false },
       },
-      legend: {
-        show: selectionSeries.length > 0,
-      },
-      dataZoom: [
-        { type: "slider" },
-      ],
-      grid: {
-        left: 0,
-        right: 0,
-      },
-      xAxis: {
-        type: "category",
-        data: chartDates,
-      },
-      yAxis: {
-        type: "value",
-        position: "left",
-        axisLabel: {
-          inside: true,
-          align: "left",
+      stroke: { curve: "straight" },
+      markers: { size: 0 },
+      xaxis: {
+        type: "datetime",
+        labels: {
+          formatter: (value) => dayjs(Number(value)).format("YYYY-MM-DD"),
         },
       },
-      series: chartSeries,
-      animation: false,
-    };
-  }, [chartDates, chartSeries, selectionSeries.length]);
+      yaxis: {
+        labels: {
+          formatter: (value) =>
+            value.toLocaleString("fr-FR", { maximumFractionDigits: 2 }),
+        },
+      },
+      tooltip: {
+        x: { format: "yyyy-MM-dd" },
+      },
+      legend: { show: selectionSeries.length > 0 },
+      grid: { padding: { left: 0, right: 0 } },
+    }),
+    [selectionSeries.length]
+  );
 
-  const handleChartZoom = (params: {
-    start?: number;
-    end?: number;
-    startValue?: number | string;
-    endValue?: number | string;
-    batch?: Array<{
-      start?: number;
-      end?: number;
-      startValue?: number | string;
-      endValue?: number | string;
-    }>;
-  }) => {
-    if (!chartData.length) {
-      setZoomRange(null);
-      return;
-    }
-
-    const zoom = Array.isArray(params.batch) ? params.batch[0] : params;
-    const { startValue, endValue, start, end } = zoom;
-    const total = chartDates.length;
-
-    const resolveIndex = (value?: number | string) => {
-      if (typeof value === "string") {
-        return chartDates.findIndex((date) => date === value);
-      }
-      if (typeof value === "number") {
-        if (value >= 0 && value <= total - 1 && Number.isInteger(value)) {
-          return value;
-        }
-      }
-      return null;
-    };
-
-    let startIndex = resolveIndex(startValue);
-    let endIndex = resolveIndex(endValue);
-
-    if (
-      (startIndex === null || startIndex < 0 || endIndex === null || endIndex < 0) &&
-      typeof start === "number" &&
-      typeof end === "number"
-    ) {
-      startIndex = Math.round((start / 100) * (total - 1));
-      endIndex = Math.round((end / 100) * (total - 1));
-    }
-
-    if (startIndex === null || endIndex === null) {
-      return;
-    }
-
-    const safeStart = Math.max(0, Math.min(startIndex, endIndex));
-    const safeEnd = Math.min(total - 1, Math.max(startIndex, endIndex));
-    const startDate = chartDates[safeStart];
-    const endDate = chartDates[safeEnd];
-
-    if (startDate && endDate) {
-      setZoomRange({ startDate, endDate });
-    }
-  };
+  const brushOptions = useMemo<ApexOptions>(
+    () => ({
+      chart: {
+        id: "performance-brush",
+        type: "area",
+        height: 120,
+        brush: { enabled: true, target: "performance-main" },
+        selection: {
+          enabled: Boolean(brushSelection),
+          xaxis: brushSelection ?? undefined,
+        },
+        toolbar: { show: false },
+        zoom: { enabled: false },
+        animations: { enabled: false },
+        events: {
+          selection: handleBrushSelection,
+        },
+      },
+      stroke: { curve: "straight" },
+      fill: { opacity: 0.2 },
+      markers: { size: 0 },
+      xaxis: {
+        type: "datetime",
+        labels: {
+          formatter: (value) => dayjs(Number(value)).format("YYYY-MM-DD"),
+        },
+      },
+      yaxis: {
+        labels: { show: false },
+      },
+      tooltip: {
+        x: { format: "yyyy-MM-dd" },
+      },
+      grid: { padding: { left: 0, right: 0 } },
+    }),
+    [brushSelection, handleBrushSelection]
+  );
 
   const formatAmount = (amount: number | null, currencyCode: string | null) => {
     if (amount === null || amount === undefined) {
@@ -766,6 +798,7 @@ const PerformancePage = () => {
     );
   };
 
+
   const handleTableChange = (
     _pagination: unknown,
     _filters: unknown,
@@ -780,7 +813,7 @@ const PerformancePage = () => {
     });
   };
 
-  const performanceTotals = useMemo(() => {
+  const performanceTotals = useMemo<PerformanceTotals>(() => {
     const rows = portfolioPerformanceQuery.data?.portfolioSecurityPerformance ?? [];
     const totalPortfolio = rows.find(
       (portfolio) => portfolio?.portfolioId === "TOTAL"
@@ -849,7 +882,7 @@ const PerformancePage = () => {
     );
   }, [portfolioPerformanceQuery.data]);
 
-  const totalSummary = useMemo(() => {
+  const totalSummary = useMemo<TotalSummary>(() => {
     const totalAmount = performanceTotals.hasAmount
       ? performanceTotals.totalAmount
       : null;
@@ -967,314 +1000,106 @@ const PerformancePage = () => {
         />
       ) : shouldFetch ? (
         <Card title="Résultats">
-          <Space direction="vertical" size="large" className="page-stack">
-            {deltaQuery.loading ? (
-              <Spin />
+          {isMobileLayout ? (
+            SHOW_MOBILE_PLACEHOLDERS ? (
+              <div className="performance-mobile-panels">
+                <div className="performance-mobile-tabs">
+                  <button
+                    type="button"
+                    className={`performance-mobile-tab${
+                      mobileActiveSlide === 0 ? " performance-mobile-tab--active" : ""
+                    }`}
+                    onClick={() => {
+                      setMobileActiveSlide(0);
+                      mobileCarouselRef.current?.goTo(0);
+                    }}
+                  >
+                    Graphe
+                  </button>
+                  <button
+                    type="button"
+                    className={`performance-mobile-tab${
+                      mobileActiveSlide === 1 ? " performance-mobile-tab--active" : ""
+                    }`}
+                    onClick={() => {
+                      setMobileActiveSlide(1);
+                      mobileCarouselRef.current?.goTo(1);
+                    }}
+                  >
+                    Liste
+                  </button>
+                </div>
+                <Carousel
+                  ref={mobileCarouselRef}
+                  dots
+                  draggable
+                  swipeToSlide
+                  afterChange={(current) => setMobileActiveSlide(current)}
+                >
+                  <div>
+                    <div className="performance-mobile-panel">
+                      <Typography.Text>Graphe</Typography.Text>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="performance-mobile-panel">
+                      <Typography.Text>Liste</Typography.Text>
+                    </div>
+                  </div>
+                </Carousel>
+              </div>
             ) : (
-              <Typography.Text>
-                Montant clientFilterDelta :{" "}
-                <Typography.Text strong>
-                  {delta?.amount?.toLocaleString("fr-FR", {
-                    maximumFractionDigits: 2,
-                  }) ?? "-"}
-                </Typography.Text>{" "}
-                {delta?.currencyCode ? `(${delta.currencyCode})` : null}
-              </Typography.Text>
-            )}
-            <div className="performance-layout">
-              <div className="performance-chart">
-                {accumulatedQuery.loading ? (
-                  <Spin />
-                ) : (
-                  <Spin spinning={selectionLoading}>
-                    {hasChartData ? (
-                      <ReactECharts
-                        option={chartOption}
-                        style={{ height: 640, width: "100%" }}
-                        opts={{ renderer: "canvas" }}
-                        replaceMerge={["series"]}
-                        onEvents={{ datazoom: handleChartZoom }}
-                      />
-                    ) : (
-                      <Typography.Text type="secondary">
-                        Aucun point disponible sur la période.
-                      </Typography.Text>
-                    )}
-                  </Spin>
-                )}
-              </div>
-              <div className="performance-table">
-                {selectionError ? (
-                  <Alert
-                    type="error"
-                    message="Erreur lors du chargement des courbes sélectionnées."
-                    description={selectionError}
-                  />
-                ) : null}
-                {portfolioPerformanceQuery.error ? (
-                  <Alert
-                    type="error"
-                    message="Erreur lors du chargement du détail des performances."
-                    description={portfolioPerformanceQuery.error?.message}
-                  />
-                ) : portfolioPerformanceQuery.loading ? (
-                  <Spin />
-                ) : performanceRows.length ? (
-                  <Space direction="vertical" size="middle" className="page-stack">
-                    <Typography.Text type="secondary">
-                      Détail des performances du {zoomRange?.startDate} au {zoomRange?.endDate}
-                    </Typography.Text>
-                    <div className="performance-table-desktop">
-                      <Table
-                        rowSelection={{
-                          selectedRowKeys,
-                          onChange: handleRowSelectionChange,
-                          checkStrictly: true,
-                        }}
-                        onChange={handleTableChange}
-                        tableLayout="fixed"
-                        columns={[
-                          {
-                            title: "Nom",
-                            dataIndex: "name",
-                            key: "name",
-                            className: "performance-name-cell",
-                            width: 240,
-                            ellipsis: true,
-                            sorter: (a, b) => a.name.localeCompare(b.name, "fr"),
-                            sortOrder:
-                              sortState.columnKey === "name" ? sortState.order : null,
-                            sortDirections: ["ascend", "descend"],
-                          },
-                          {
-                            title: "Valeur de départ",
-                            dataIndex: "startAmount",
-                            key: "startAmount",
-                            align: "right",
-                            className: "performance-start-value",
-                            width: 150,
-                            render: (_value, record) =>
-                              formatAmount(record.startAmount, record.startCurrency),
-                            sorter: (a, b) =>
-                              (a.startAmount ?? 0) - (b.startAmount ?? 0),
-                            sortOrder:
-                              sortState.columnKey === "startAmount"
-                                ? sortState.order
-                                : null,
-                            sortDirections: ["ascend", "descend"],
-                          },
-                          {
-                            title: "Performance en euros",
-                            dataIndex: "deltaAmount",
-                            key: "deltaAmount",
-                            align: "right",
-                            width: 170,
-                            render: (_value, record) =>
-                              formatAmount(record.deltaAmount, record.deltaCurrency),
-                            sorter: (a, b) =>
-                              (a.deltaAmount ?? 0) - (b.deltaAmount ?? 0),
-                            sortOrder:
-                              sortState.columnKey === "deltaAmount"
-                                ? sortState.order
-                                : null,
-                            sortDirections: ["ascend", "descend"],
-                          },
-                          {
-                            title: "Performance en %",
-                            dataIndex: "deltaPercent",
-                            key: "deltaPercent",
-                            align: "right",
-                            width: 130,
-                            render: (value) => formatPercent(value),
-                            sorter: (a, b) =>
-                              (a.deltaPercent ?? 0) - (b.deltaPercent ?? 0),
-                            sortOrder:
-                              sortState.columnKey === "deltaPercent"
-                                ? sortState.order
-                                : null,
-                            sortDirections: ["ascend", "descend"],
-                          },
-                        ]}
-                        dataSource={performanceRows}
-                        pagination={false}
-                        size="small"
-                        summary={() => (
-                          <Table.Summary>
-                            <Table.Summary.Row>
-                              <Table.Summary.Cell index={0} />
-                              <Table.Summary.Cell index={1}>
-                                <Typography.Text strong>Total</Typography.Text>
-                              </Table.Summary.Cell>
-                              <Table.Summary.Cell
-                                index={2}
-                                align="right"
-                                className="performance-start-value"
-                              >
-                                <Typography.Text strong>
-                                  {formatAmount(
-                                    totalSummary.totalStartAmount,
-                                    performanceTotals.startCurrency ?? null
-                                  )}
-                                </Typography.Text>
-                              </Table.Summary.Cell>
-                              <Table.Summary.Cell index={3} align="right">
-                                <Typography.Text strong>
-                                  {formatAmount(
-                                    totalSummary.totalAmount,
-                                    performanceTotals.currencyCode
-                                  )}
-                                </Typography.Text>
-                              </Table.Summary.Cell>
-                              <Table.Summary.Cell index={4} align="right">
-                                <Typography.Text strong>
-                                  {formatPercent(totalSummary.totalPercent)}
-                                </Typography.Text>
-                              </Table.Summary.Cell>
-                            </Table.Summary.Row>
-                          </Table.Summary>
-                        )}
-                      />
-                    </div>
-                    <div className="performance-table-mobile">
-                      <div className="performance-list">
-                        {mobilePerformanceRows.map((row) => (
-                          <div key={row.key} className="performance-list-item">
-                            <div className="performance-list-header">
-                              <Typography.Text strong className="performance-list-title">
-                                {row.name}
-                              </Typography.Text>
-                            </div>
-                            <div className="performance-list-values">
-                              {row.children?.length ? (
-                                <button
-                                  type="button"
-                                  className="performance-list-toggle-button"
-                                  onClick={() => togglePortfolioExpanded(row.key)}
-                                  aria-label={
-                                    expandedPortfolioKeys.includes(row.key)
-                                      ? "Réduire"
-                                      : "Déployer"
-                                  }
-                                >
-                                  {expandedPortfolioKeys.includes(row.key) ? (
-                                    <DownOutlined />
-                                  ) : (
-                                    <RightOutlined />
-                                  )}
-                                </button>
-                              ) : (
-                                <span className="performance-list-toggle-spacer" />
-                              )}
-                              <Checkbox
-                                checked={selectedRowKeys.includes(row.key)}
-                                onChange={(event) =>
-                                  handleListSelectionChange(
-                                    row,
-                                    event.target.checked
-                                  )
-                                }
-                              />
-                              <div className="performance-list-metrics">
-                                <Typography.Text className="performance-list-value">
-                                  {formatAmount(
-                                    row.deltaAmount,
-                                    row.deltaCurrency
-                                  )}
-                                </Typography.Text>
-                                <Typography.Text
-                                  type="secondary"
-                                  className="performance-list-value"
-                                >
-                                  {formatPercent(row.deltaPercent)}
-                                </Typography.Text>
-                              </div>
-                            </div>
-                            {row.children?.length &&
-                            expandedPortfolioKeys.includes(row.key) ? (
-                              <div className="performance-list-children">
-                                {row.children.map((child) => (
-                                  <div
-                                    key={child.key}
-                                    className="performance-list-item"
-                                  >
-                                    <div className="performance-list-header">
-                                      <Typography.Text className="performance-list-title">
-                                        {child.name}
-                                      </Typography.Text>
-                                    </div>
-                                    <div className="performance-list-values">
-                                      <span className="performance-list-toggle-spacer" />
-                                      <Checkbox
-                                        checked={selectedRowKeys.includes(child.key)}
-                                        onChange={(event) =>
-                                          handleListSelectionChange(
-                                            child,
-                                            event.target.checked
-                                          )
-                                        }
-                                      />
-                                      <div className="performance-list-metrics">
-                                        <Typography.Text className="performance-list-value">
-                                          {formatAmount(
-                                            child.deltaAmount,
-                                            child.deltaCurrency
-                                          )}
-                                        </Typography.Text>
-                                        <Typography.Text
-                                          type="secondary"
-                                          className="performance-list-value"
-                                        >
-                                          {formatPercent(child.deltaPercent)}
-                                        </Typography.Text>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
-                        <div className="performance-list-item performance-list-total">
-                          <div className="performance-list-header">
-                            <span className="performance-list-checkbox" />
-                            <Typography.Text strong className="performance-list-title">
-                              Total
-                            </Typography.Text>
-                          </div>
-                          <div className="performance-list-values">
-                            <span className="performance-list-toggle-spacer" />
-                            <span className="performance-list-checkbox" />
-                            <div className="performance-list-metrics">
-                              <Typography.Text
-                                strong
-                                className="performance-list-value"
-                              >
-                                {formatAmount(
-                                  totalSummary.totalAmount,
-                                  performanceTotals.currencyCode
-                                )}
-                              </Typography.Text>
-                              <Typography.Text
-                                strong
-                                type="secondary"
-                                className="performance-list-value"
-                              >
-                                {formatPercent(totalSummary.totalPercent)}
-                              </Typography.Text>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </Space>
-                ) : (
-                  <Typography.Text type="secondary">
-                    Aucun détail disponible sur la période sélectionnée.
-                  </Typography.Text>
-                )}
-              </div>
-            </div>
-          </Space>
+              <PerformanceResultsMobile
+                delta={delta}
+                deltaLoading={deltaQuery.loading}
+                accumulatedLoading={accumulatedQuery.loading}
+                selectionLoading={selectionLoading}
+                hasChartData={hasChartData}
+                chartSeries={chartSeries}
+                chartOptions={chartOptions}
+                brushSeries={brushSeries}
+                brushOptions={brushOptions}
+                selectionError={selectionError}
+                portfolioError={portfolioPerformanceQuery.error?.message ?? null}
+                portfolioLoading={portfolioPerformanceQuery.loading}
+                performanceRows={performanceRows}
+                mobilePerformanceRows={mobilePerformanceRows}
+                expandedPortfolioKeys={expandedPortfolioKeys}
+                selectedRowKeys={selectedRowKeys}
+                totalSummary={totalSummary}
+                performanceTotals={performanceTotals}
+                onTogglePortfolioExpanded={togglePortfolioExpanded}
+                onListSelectionChange={handleListSelectionChange}
+                formatAmount={formatAmount}
+                formatPercent={formatPercent}
+              />
+            )
+          ) : (
+            <PerformanceResultsDesktop
+              delta={delta}
+              deltaLoading={deltaQuery.loading}
+              accumulatedLoading={accumulatedQuery.loading}
+              selectionLoading={selectionLoading}
+              hasChartData={hasChartData}
+              chartSeries={chartSeries}
+              chartOptions={chartOptions}
+              brushSeries={brushSeries}
+              brushOptions={brushOptions}
+              selectionError={selectionError}
+              portfolioError={portfolioPerformanceQuery.error?.message ?? null}
+              portfolioLoading={portfolioPerformanceQuery.loading}
+              performanceRows={performanceRows}
+              totalSummary={totalSummary}
+              performanceTotals={performanceTotals}
+              zoomRange={zoomRange}
+              selectedRowKeys={selectedRowKeys}
+              sortState={sortState}
+              onRowSelectionChange={handleRowSelectionChange}
+              onTableChange={handleTableChange}
+              formatAmount={formatAmount}
+              formatPercent={formatPercent}
+            />
+          )}
         </Card>
       ) : (
         <Card>

@@ -31,6 +31,7 @@ body.app-mode-desktop {
 
 .app-main {
   flex: 1;
+  width: 100%;
 }
 
 .app-header {
@@ -100,15 +101,42 @@ body.app-mode-desktop {
 }
 
 .performance-table-mobile {
-  display: none;
-}
-
-body.app-mode-mobile .performance-table-desktop {
-  display: none;
-}
-
-body.app-mode-mobile .performance-table-mobile {
   display: block;
+}
+
+.performance-mobile-panels {
+  display: block;
+  overflow: hidden;
+  width: 100%;
+}
+
+.performance-mobile-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.performance-mobile-tab {
+  flex: 1;
+  border: 1px solid #d9d9d9;
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.performance-mobile-tab:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+.performance-mobile-tab--active {
+  border-color: #1677ff;
+  background: #e6f4ff;
+  color: #1677ff;
 }
 
 .performance-list {
@@ -197,8 +225,32 @@ body.app-mode-mobile .performance-table-mobile {
 }
 
 .performance-list-toggle-spacer {
+  width: 22px;
   height: 22px;
   display: inline-block;
+}
+
+.performance-mobile-panel {
+  padding: 8px 0 16px;
+  width: 100%;
+}
+
+.performance-mobile-panels .ant-carousel {
+  padding-bottom: 16px;
+  width: 100%;
+}
+
+.performance-mobile-panels .slick-dots {
+  bottom: -6px;
+}
+
+.performance-mobile-panels .slick-slide > div {
+  width: 100%;
+}
+
+.performance-mobile-panels .slick-slider,
+.performance-mobile-panels .slick-list {
+  width: 100%;
 }
 
 .performance-name-cell {
