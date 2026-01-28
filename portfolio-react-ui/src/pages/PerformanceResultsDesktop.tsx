@@ -83,7 +83,7 @@ const PerformanceResultsDesktop = ({
                 <Space direction="vertical" size="small" className="page-stack">
                   <ReactECharts
                     option={chartOptions}
-                    style={{ height: 520, width: "100%" }}
+                    style={{ height: 470, width: "100%" }}
                     notMerge
                     lazyUpdate
                   />

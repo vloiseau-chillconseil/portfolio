@@ -58,8 +58,6 @@ const PerformanceResultsMobile = ({
   formatPercent,
 }: PerformanceResultsMobileProps) => {
   const carouselRef = useRef<{ goTo: (slide: number) => void } | null>(null);
-  const chartRef = useRef<ReactECharts | null>(null);
-  const chartContainerRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <Space direction="vertical" size="large" className="page-stack">
@@ -121,18 +119,12 @@ const PerformanceResultsMobile = ({
               <Spin spinning={selectionLoading}>
                 {hasChartData ? (
                   <Space direction="vertical" size="small" className="page-stack">
-                    <div
-                      className="performance-mobile-chart-area"
-                      ref={chartContainerRef}
-                    >
-                      <ReactECharts
-                        option={chartOptions}
-                        style={{ height: "100%", width: "100%" }}
-                        notMerge
-                        lazyUpdate
-                        ref={chartRef}
-                      />
-                    </div>
+                    <ReactECharts
+                      option={chartOptions}
+                      style={{ height: 470, width: "100%" }}
+                      notMerge
+                      lazyUpdate
+                    />
                   </Space>
                 ) : (
                   <Typography.Text type="secondary">
