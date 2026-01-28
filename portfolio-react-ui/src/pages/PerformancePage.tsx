@@ -565,13 +565,18 @@ const PerformancePage = () => {
             }),
         },
       },
-       dataZoom: [
+      dataZoom: [
         {
+          id: "performance-zoom",
           type: "slider",
-          // height: 24,
-          // bottom: 0,
-          // startValue: brushRange?.startValue,
-          // endValue: brushRange?.endValue,
+          xAxisIndex: 0,
+          height: 24,
+          bottom: 0,
+          rangeMode: ["value", "value"],
+          filterMode: "none",
+          throttle: 50,
+          startValue: brushRange?.startValue,
+          endValue: brushRange?.endValue,
         },
       ],
       series,
