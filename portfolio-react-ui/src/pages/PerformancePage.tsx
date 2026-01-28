@@ -550,6 +550,10 @@ const PerformancePage = () => {
       yAxis: {
         type: "value",
         axisLabel: {
+          // ellipsis: true,
+          inside: true,
+          // align: "right",
+          margin: 8,
           formatter: (value: number) =>
             Number(value).toLocaleString("fr-FR", {
               maximumFractionDigits: 2,
