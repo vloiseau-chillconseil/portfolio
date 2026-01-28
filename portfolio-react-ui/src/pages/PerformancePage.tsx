@@ -148,6 +148,9 @@ const PerformancePage = () => {
   const [zoomRange, setZoomRange] = useState<
     { startDate: string; endDate: string } | null
   >(null);
+  const [appliedZoomRange, setAppliedZoomRange] = useState<
+    { startDate: string; endDate: string } | null
+  >(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<PerformanceRow[]>([]);
   const [sortState, setSortState] = useState<SortState>({
@@ -164,6 +167,7 @@ const PerformancePage = () => {
     () => window.innerWidth <= 500
   );
   const skipNextSaveRef = useRef(false);
+  const applyZoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isNativePlatform = Capacitor.isNativePlatform();
 
   const { data: filtersData, loading: filtersLoading } = useQuery<{
@@ -262,10 +266,15 @@ const PerformancePage = () => {
   useEffect(() => {
     if (!formattedDates?.startDate || !formattedDates?.endDate) {
       setZoomRange(null);
+      setAppliedZoomRange(null);
       return;
     }
 
     setZoomRange({
+      startDate: formattedDates.startDate,
+      endDate: formattedDates.endDate,
+    });
+    setAppliedZoomRange({
       startDate: formattedDates.startDate,
       endDate: formattedDates.endDate,
     });
@@ -345,11 +354,11 @@ const PerformancePage = () => {
     variables: {
       clientId: currentClient?.id,
       filterId: selectedFilterId,
-      startDate: zoomRange?.startDate,
-      endDate: zoomRange?.endDate,
+      startDate: appliedZoomRange?.startDate,
+      endDate: appliedZoomRange?.endDate,
     },
     fetchPolicy: "no-cache",
-    skip: !shouldFetch || !zoomRange,
+    skip: !shouldFetch || !appliedZoomRange,
   });
 
   const [updateQuotes, updateQuotesState] = useMutation<{
@@ -501,6 +510,12 @@ const PerformancePage = () => {
       const startDate = dayjs(startValue).format("YYYY-MM-DD");
       const endDate = dayjs(endValue).format("YYYY-MM-DD");
       setZoomRange({ startDate, endDate });
+      if (applyZoomTimeoutRef.current) {
+        clearTimeout(applyZoomTimeoutRef.current);
+      }
+      applyZoomTimeoutRef.current = setTimeout(() => {
+        setAppliedZoomRange({ startDate, endDate });
+      }, 200);
     },
     [brushData]
   );
@@ -572,6 +587,7 @@ const PerformancePage = () => {
           throttle: 50,
           startValue: brushRange?.startValue,
           endValue: brushRange?.endValue,
+          snap: true,
         },
       ],
       series,
@@ -687,11 +703,13 @@ const PerformancePage = () => {
       setSelectionError(null);
       setSelectionLoading(false);
       setExpandedPortfolioKeys([]);
+      setAppliedZoomRange(null);
+      setZoomRange(null);
     }
   }, [shouldFetch]);
 
   useEffect(() => {
-    if (!shouldFetch || !zoomRange || !selectedRows.length) {
+    if (!shouldFetch || !appliedZoomRange || !selectedRows.length) {
       setSelectionSeries([]);
       setSelectionError(null);
       setSelectionLoading(false);
@@ -710,8 +728,8 @@ const PerformancePage = () => {
             variables: {
               clientId: currentClient?.id ?? null,
               filterId: selectedFilterId,
-              startDate: zoomRange.startDate,
-              endDate: zoomRange.endDate,
+              startDate: appliedZoomRange.startDate,
+              endDate: appliedZoomRange.endDate,
               portfolioId: row.portfolioId,
               securityId: row.securityId,
             },
