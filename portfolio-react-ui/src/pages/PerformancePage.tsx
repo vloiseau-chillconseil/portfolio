@@ -529,28 +529,19 @@ const PerformancePage = () => {
       });
     });
 
-    const xMin = zoomRange?.startDate
-      ? dayjs(zoomRange.startDate).valueOf()
-      : undefined;
-    const xMax = zoomRange?.endDate
-      ? dayjs(zoomRange.endDate).valueOf()
-      : undefined;
-
     return {
       animation: false,
-      //legend: { show: selectionSeries.length > 0 },
-      /*tooltip: {
+      legend: { show: selectionSeries.length > 0 },
+      tooltip: {
         trigger: "axis",
         valueFormatter: (value) =>
           Number(value).toLocaleString("fr-FR", {
             maximumFractionDigits: 2,
           }),
-      },*/
+      },
       grid: { left: 12, right: 12, top: 16, bottom: 60 },
       xAxis: {
         type: "time",
-        min: xMin,
-        max: xMax,
         axisLabel: {
           formatter: (value: number | string) =>
             dayjs(value).format("YYYY-MM-DD"),
@@ -580,8 +571,8 @@ const PerformancePage = () => {
         },
       ],
       series,
-     };
-  }, [brushRange, chartData, selectionSeries, zoomRange]);
+    };
+  }, [brushRange, chartData, selectionSeries]);
 
   const formatAmount = (amount: number | null, currencyCode: string | null) => {
     if (amount === null || amount === undefined) {
