@@ -1,4 +1,4 @@
-import { gql, useApolloClient, useMutation, useQuery } from "@apollo/client";
+import { gql, useApolloClient, useMutation, useQuery, useSubscription } from "@apollo/client";
 import { Capacitor } from "@capacitor/core";
 import {
   Alert,
@@ -33,6 +33,15 @@ import type {
 } from "./performancePageViewTypes";
 
 const SHOW_MOBILE_PLACEHOLDERS = false;
+const QUOTE_UPDATES_SUBSCRIPTION = gql`
+  subscription QuoteUpdates($clientId: String) {
+    quoteUpdates(clientId: $clientId) {
+      completedTaskCount
+      taskCount
+      timestamp
+    }
+  }
+`;
 
 const CLIENT_FILTERS_QUERY = gql`
   query ClientFilters($clientId: String) {
@@ -176,7 +185,14 @@ const PerformancePage = () => {
   const [listPerfDirection, setListPerfDirection] = useState<"asc" | "desc">(
     "desc"
   );
+  const lastQuoteProgressTsRef = useRef<number | null>(null);
   const isNativePlatform = Capacitor.isNativePlatform();
+  const quoteProgress = useSubscription<{
+    quoteUpdates: { completedTaskCount: number; taskCount: number; timestamp: number } | null;
+  }>(QUOTE_UPDATES_SUBSCRIPTION, {
+    variables: { clientId: currentClient?.id ?? null },
+    skip: !currentClient?.id,
+  });
 
   const { data: filtersData, loading: filtersLoading } = useQuery<{
     clientFilters: Array<{ id: string | null; label: string | null }> | null;
@@ -416,8 +432,19 @@ const PerformancePage = () => {
         `Actualisation lancée (${result.securityCount ?? 0} titres).`
       );
 
+      // Nettoyer le cache pour forcer un rechargement complet des données.
+      try {
+        await apolloClient.clearStore();
+      } catch {
+        // ignore cache clear errors, we'll still refetch below
+      }
+
       if (shouldFetch) {
-        await Promise.all([deltaQuery.refetch(), accumulatedQuery.refetch()]);
+        await Promise.all([
+          deltaQuery.refetch(),
+          accumulatedQuery.refetch(),
+          portfolioPerformanceQuery.refetch(),
+        ]);
       }
     } catch {
       message.error("Erreur lors de l'actualisation des titres.");
@@ -616,6 +643,40 @@ const PerformancePage = () => {
       rows.flatMap((row) => [row, ...(row.children ? flatten(row.children) : [])]);
     return flatten(sortedPerformanceRows);
   }, [sortedPerformanceRows]);
+
+  useEffect(() => {
+    const progress = quoteProgress.data?.quoteUpdates;
+    if (!progress) return;
+    if (!progress.taskCount) return;
+    if (progress.completedTaskCount < progress.taskCount) return;
+    if (lastQuoteProgressTsRef.current === progress.timestamp) return;
+
+    lastQuoteProgressTsRef.current = progress.timestamp;
+
+    const refreshData = async () => {
+      try {
+        await apolloClient.clearStore();
+      } catch {
+        // ignore cache clear errors
+      }
+      if (shouldFetch) {
+        await Promise.all([
+          deltaQuery.refetch(),
+          accumulatedQuery.refetch(),
+          portfolioPerformanceQuery.refetch(),
+        ]);
+      }
+    };
+
+    void refreshData();
+  }, [
+    accumulatedQuery,
+    apolloClient,
+    deltaQuery,
+    portfolioPerformanceQuery,
+    quoteProgress.data?.quoteUpdates,
+    shouldFetch,
+  ]);
 
   useEffect(() => {
     if (!selectedRowKeys.length) {
