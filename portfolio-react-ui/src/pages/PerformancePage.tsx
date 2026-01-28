@@ -1054,6 +1054,7 @@ const PerformancePage = () => {
                 mobilePerformanceRows={mobilePerformanceRows}
                 expandedPortfolioKeys={expandedPortfolioKeys}
                 selectedRowKeys={selectedRowKeys}
+                zoomRange={zoomRange}
                 totalSummary={totalSummary}
                 performanceTotals={performanceTotals}
                 onBrushSelection={handleBrushSelection}

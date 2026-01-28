@@ -7,6 +7,7 @@ import type {
   PerformanceRow,
   PerformanceTotals,
   TotalSummary,
+  ZoomRange,
 } from "./performancePageViewTypes";
 
 type PerformanceResultsMobileProps = {
@@ -23,6 +24,7 @@ type PerformanceResultsMobileProps = {
   mobilePerformanceRows: PerformanceRow[];
   expandedPortfolioKeys: string[];
   selectedRowKeys: string[];
+  zoomRange: ZoomRange;
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
   onBrushSelection: (event: unknown) => void;
@@ -46,6 +48,7 @@ const PerformanceResultsMobile = ({
   mobilePerformanceRows,
   expandedPortfolioKeys,
   selectedRowKeys,
+  zoomRange,
   totalSummary,
   performanceTotals,
   onBrushSelection,
@@ -69,6 +72,11 @@ const PerformanceResultsMobile = ({
             }) ?? "-"}
           </Typography.Text>{" "}
           {delta?.currencyCode ? `(${delta.currencyCode})` : null}
+          {zoomRange ? (
+            <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+              {`(${zoomRange.startDate} - ${zoomRange.endDate})`}
+            </Typography.Text>
+          ) : null}
         </Typography.Text>
       )}
       <div className="performance-mobile-panels">

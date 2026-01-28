@@ -68,6 +68,11 @@ const PerformanceResultsDesktop = ({
             }) ?? "-"}
           </Typography.Text>{" "}
           {delta?.currencyCode ? `(${delta.currencyCode})` : null}
+          {zoomRange ? (
+            <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
+              {`(${zoomRange.startDate} - ${zoomRange.endDate})`}
+            </Typography.Text>
+          ) : null}
         </Typography.Text>
       )}
       <div className="performance-layout">
