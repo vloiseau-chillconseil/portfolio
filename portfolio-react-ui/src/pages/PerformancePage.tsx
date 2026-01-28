@@ -891,17 +891,17 @@ const PerformancePage = () => {
         />
       ) : null}
 
-      {deltaQuery.error || accumulatedQuery.error ? (
-        <Alert
-          type="error"
-          message="Erreur lors du chargement des performances."
-          description={
-            deltaQuery.error?.message || accumulatedQuery.error?.message
-          }
-        />
-      ) : shouldFetch ? (
-        <Card title="Résultats">
-          {isMobileLayout ? (
+        {deltaQuery.error || accumulatedQuery.error ? (
+          <Alert
+            type="error"
+            message="Erreur lors du chargement des performances."
+            description={
+              deltaQuery.error?.message || accumulatedQuery.error?.message
+            }
+          />
+        ) : shouldFetch ? (
+          <Card title={isMobileLayout ? undefined : "Résultats"}>
+            {isMobileLayout ? (
             SHOW_MOBILE_PLACEHOLDERS ? (
               <div className="performance-mobile-panels">
                 <div className="performance-mobile-tabs">

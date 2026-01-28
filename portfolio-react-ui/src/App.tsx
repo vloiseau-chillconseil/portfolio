@@ -135,7 +135,7 @@ const App = () => {
             onClick={() => setDrawerOpen(true)}
           />
           <Typography.Title level={4} className="app-title">
-            Portfolio React
+            PP
           </Typography.Title>
           <div className="app-header-progress">
             <Progress
