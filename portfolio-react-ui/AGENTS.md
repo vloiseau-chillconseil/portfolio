@@ -13,5 +13,5 @@ C'est une interface graphique permettant d'afficher des détails sur un ensemble
 
 ## UI Layout Modes
 - The app defines two layout modes based on viewport width.
-- Mobile mode uses a 375px threshold (`window.innerWidth <= 375`).
+- Mobile mode uses a 500px threshold (`window.innerWidth <= 500`).
 - Classes applied: `body.app-mode-mobile` / `body.app-mode-desktop` and `app-layout--mobile` / `app-layout--desktop` on the root layout.

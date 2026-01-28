@@ -12,7 +12,7 @@ import {
   message,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
-import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
+import type { EChartsOption } from "echarts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CarouselRef } from "antd/es/carousel";
 import { useCurrentClient } from "../state/currentClientContext";
@@ -161,7 +161,7 @@ const PerformancePage = () => {
   const mobileCarouselRef = useRef<CarouselRef | null>(null);
   const [mobileActiveSlide, setMobileActiveSlide] = useState(0);
   const [isMobileLayout, setIsMobileLayout] = useState(
-    () => window.innerWidth <= 375
+    () => window.innerWidth <= 500
   );
   const skipNextSaveRef = useRef(false);
   const isNativePlatform = Capacitor.isNativePlatform();
@@ -236,7 +236,7 @@ const PerformancePage = () => {
 
   useEffect(() => {
     const updateLayoutMode = () => {
-      setIsMobileLayout(window.innerWidth <= 375);
+      setIsMobileLayout(window.innerWidth <= 500);
     };
 
     updateLayoutMode();
@@ -376,12 +376,12 @@ const PerformancePage = () => {
     return mapDeltaPoints(points);
   }, [accumulatedQuery.data, mapDeltaPoints]);
 
-  
-
-  const filters = useMemo(
-    () => filtersData?.clientFilters ?? [],
-    [filtersData]
+  const brushData = useMemo(
+    () => (chartData.length ? chartData : selectionSeries[0]?.points ?? []),
+    [chartData, selectionSeries]
   );
+
+  const filters = useMemo(() => filtersData?.clientFilters ?? [], [filtersData]);
 
   const delta = deltaQuery.data?.clientFilterDelta;
   const nativeStartValue = nativeStartDate || "";
@@ -434,48 +434,12 @@ const PerformancePage = () => {
     setDateRange(null);
   };
 
-  const chartSeries = useMemo<ApexAxisChartSeries>(() => {
-    const baseSeriesData = chartData.map((point) => ({
-      x: point.timestamp,
-      y: point.amount,
-    }));
-    const baseSeries = baseSeriesData.length
-      ? [
-          {
-            name: "Accumulated Delta",
-            data: baseSeriesData,
-          },
-        ]
-      : [];
-
-    const selectionLines = selectionSeries.map((series) => ({
-      name: series.name,
-      data: series.points.map((point) => ({
-        x: point.timestamp,
-        y: point.amount,
-      })),
-    }));
-
-    return [...baseSeries, ...selectionLines];
-  }, [chartData, selectionSeries]);
-
   const hasChartData = useMemo(
-    () => chartSeries.some((series) => series.data?.length),
-    [chartSeries]
+    () =>
+      chartData.length > 0 ||
+      selectionSeries.some((series) => series.points.length > 0),
+    [chartData, selectionSeries]
   );
-
-  const brushSeries = useMemo<ApexAxisChartSeries>(() => {
-    const sourcePoints = chartData.length
-      ? chartData
-      : selectionSeries[0]?.points ?? [];
-    const baseSeriesData = sourcePoints.map((point) => ({
-      x: point.timestamp,
-      y: point.amount,
-    }));
-    return baseSeriesData.length
-      ? [{ name: "Overview", data: baseSeriesData }]
-      : [];
-  }, [chartData, selectionSeries]);
 
   const brushSelection = useMemo(() => {
     if (zoomRange?.startDate && zoomRange?.endDate) {
@@ -484,108 +448,135 @@ const PerformancePage = () => {
         max: dayjs(zoomRange.endDate).valueOf(),
       };
     }
-    if (chartData.length) {
+    if (brushData.length) {
       return {
-        min: chartData[0].timestamp,
-        max: chartData[chartData.length - 1].timestamp,
-      };
-    }
-    if (selectionSeries.length) {
-      return {
-        min: selectionSeries[0].points[0]?.timestamp ?? 0,
-        max:
-          selectionSeries[0].points[
-            selectionSeries[0].points.length - 1
-          ]?.timestamp ?? 0,
+        min: brushData[0].timestamp,
+        max: brushData[brushData.length - 1].timestamp,
       };
     }
     return null;
-  }, [chartData, selectionSeries, zoomRange]);
+  }, [brushData, zoomRange]);
+
+  const brushRange = useMemo(
+    () =>
+      brushSelection
+        ? { startValue: brushSelection.min, endValue: brushSelection.max }
+        : undefined,
+    [brushSelection]
+  );
 
   const handleBrushSelection = useCallback(
-    (
-      _chartContext: unknown,
-      { xaxis }: { xaxis?: { min?: number; max?: number } }
-    ) => {
-      if (!xaxis?.min || !xaxis?.max) {
+    (event: {
+      batch?: Array<{
+        start?: number;
+        end?: number;
+        startValue?: number;
+        endValue?: number;
+      }>;
+      start?: number;
+      end?: number;
+      startValue?: number;
+      endValue?: number;
+    }) => {
+      const payload = event?.batch?.[0] ?? event;
+      const resolveFromPercent = (percent?: number) => {
+        if (percent === undefined || percent === null) return null;
+        if (!brushData.length) return null;
+        const index = Math.round((percent / 100) * (brushData.length - 1));
+        return brushData[index]?.timestamp ?? null;
+      };
+
+      const startValue =
+        payload?.startValue ?? resolveFromPercent(payload?.start);
+      const endValue = payload?.endValue ?? resolveFromPercent(payload?.end);
+
+      if (
+        startValue === undefined ||
+        endValue === undefined ||
+        startValue === null ||
+        endValue === null
+      ) {
         return;
       }
-      const startDate = dayjs(xaxis.min).format("YYYY-MM-DD");
-      const endDate = dayjs(xaxis.max).format("YYYY-MM-DD");
+      const startDate = dayjs(startValue).format("YYYY-MM-DD");
+      const endDate = dayjs(endValue).format("YYYY-MM-DD");
       setZoomRange({ startDate, endDate });
     },
-    []
+    [brushData]
   );
 
-  const chartOptions = useMemo<ApexOptions>(
-    () => ({
-      chart: {
-        id: "performance-main",
+  const chartOptions = useMemo<EChartsOption>(() => {
+    const series = [];
+
+    if (chartData.length) {
+      series.push({
+        name: "Accumulated Delta",
         type: "line",
-        toolbar: { show: false },
-        zoom: { enabled: false },
-        animations: { enabled: false },
-      },
-      stroke: { curve: "straight" },
-      markers: { size: 0 },
-      xaxis: {
-        type: "datetime",
-        labels: {
-          formatter: (value) => dayjs(Number(value)).format("YYYY-MM-DD"),
-        },
-      },
-      yaxis: {
-        labels: {
-          formatter: (value) =>
-            value.toLocaleString("fr-FR", { maximumFractionDigits: 2 }),
-        },
-      },
-      tooltip: {
-        x: { format: "yyyy-MM-dd" },
-      },
-      legend: { show: selectionSeries.length > 0 },
-      grid: { padding: { left: 0, right: 0 } },
-    }),
-    [selectionSeries.length]
-  );
+        showSymbol: false,
+        smooth: false,
+        data: chartData.map((point) => [point.timestamp, point.amount]),
+      });
+    }
 
-  const brushOptions = useMemo<ApexOptions>(
-    () => ({
-      chart: {
-        id: "performance-brush",
-        type: "area",
-        height: 120,
-        brush: { enabled: true, target: "performance-main" },
-        selection: {
-          enabled: Boolean(brushSelection),
-          xaxis: brushSelection ?? undefined,
+    selectionSeries.forEach((seriesEntry) => {
+      if (!seriesEntry.points.length) return;
+      series.push({
+        name: seriesEntry.name,
+        type: "line",
+        showSymbol: false,
+        smooth: false,
+        data: seriesEntry.points.map((point) => [point.timestamp, point.amount]),
+      });
+    });
+
+    const xMin = zoomRange?.startDate
+      ? dayjs(zoomRange.startDate).valueOf()
+      : undefined;
+    const xMax = zoomRange?.endDate
+      ? dayjs(zoomRange.endDate).valueOf()
+      : undefined;
+
+    return {
+      animation: false,
+      //legend: { show: selectionSeries.length > 0 },
+      /*tooltip: {
+        trigger: "axis",
+        valueFormatter: (value) =>
+          Number(value).toLocaleString("fr-FR", {
+            maximumFractionDigits: 2,
+          }),
+      },*/
+      grid: { left: 12, right: 12, top: 16, bottom: 60 },
+      xAxis: {
+        type: "time",
+        min: xMin,
+        max: xMax,
+        axisLabel: {
+          formatter: (value: number | string) =>
+            dayjs(value).format("YYYY-MM-DD"),
         },
-        toolbar: { show: false },
-        zoom: { enabled: false },
-        animations: { enabled: false },
-        events: {
-          selection: handleBrushSelection,
+      },
+      yAxis: {
+        type: "value",
+        axisLabel: {
+          formatter: (value: number) =>
+            Number(value).toLocaleString("fr-FR", {
+              maximumFractionDigits: 2,
+            }),
         },
       },
-      stroke: { curve: "straight" },
-      fill: { opacity: 0.2 },
-      markers: { size: 0 },
-      xaxis: {
-        type: "datetime",
-        labels: {
-          formatter: (value) => dayjs(Number(value)).format("YYYY-MM-DD"),
+       dataZoom: [
+        {
+          type: "slider",
+          // height: 24,
+          // bottom: 0,
+          // startValue: brushRange?.startValue,
+          // endValue: brushRange?.endValue,
         },
-      },
-      yaxis: {
-        labels: { show: false },
-      },
-      tooltip: {
-        x: { format: "yyyy-MM-dd" },
-      },
-      grid: { padding: { left: 0, right: 0 } },
-    }),
-    [brushSelection, handleBrushSelection]
-  );
+      ],
+      series,
+     };
+  }, [brushRange, chartData, selectionSeries, zoomRange]);
 
   const formatAmount = (amount: number | null, currencyCode: string | null) => {
     if (amount === null || amount === undefined) {
@@ -1055,10 +1046,7 @@ const PerformancePage = () => {
                 accumulatedLoading={accumulatedQuery.loading}
                 selectionLoading={selectionLoading}
                 hasChartData={hasChartData}
-                chartSeries={chartSeries}
                 chartOptions={chartOptions}
-                brushSeries={brushSeries}
-                brushOptions={brushOptions}
                 selectionError={selectionError}
                 portfolioError={portfolioPerformanceQuery.error?.message ?? null}
                 portfolioLoading={portfolioPerformanceQuery.loading}
@@ -1068,6 +1056,7 @@ const PerformancePage = () => {
                 selectedRowKeys={selectedRowKeys}
                 totalSummary={totalSummary}
                 performanceTotals={performanceTotals}
+                onBrushSelection={handleBrushSelection}
                 onTogglePortfolioExpanded={togglePortfolioExpanded}
                 onListSelectionChange={handleListSelectionChange}
                 formatAmount={formatAmount}
@@ -1081,10 +1070,7 @@ const PerformancePage = () => {
               accumulatedLoading={accumulatedQuery.loading}
               selectionLoading={selectionLoading}
               hasChartData={hasChartData}
-              chartSeries={chartSeries}
               chartOptions={chartOptions}
-              brushSeries={brushSeries}
-              brushOptions={brushOptions}
               selectionError={selectionError}
               portfolioError={portfolioPerformanceQuery.error?.message ?? null}
               portfolioLoading={portfolioPerformanceQuery.loading}
@@ -1094,6 +1080,7 @@ const PerformancePage = () => {
               zoomRange={zoomRange}
               selectedRowKeys={selectedRowKeys}
               sortState={sortState}
+              onBrushSelection={handleBrushSelection}
               onRowSelectionChange={handleRowSelectionChange}
               onTableChange={handleTableChange}
               formatAmount={formatAmount}

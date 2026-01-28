@@ -1,7 +1,7 @@
-import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
 import { Alert, Carousel, Checkbox, Space, Spin, Typography } from "antd";
 import { DownOutlined, RightOutlined } from "@ant-design/icons";
-import ReactApexChart from "react-apexcharts";
+import type { EChartsOption } from "echarts";
+import ReactECharts from "echarts-for-react";
 import { useRef } from "react";
 import type {
   PerformanceRow,
@@ -15,10 +15,7 @@ type PerformanceResultsMobileProps = {
   accumulatedLoading: boolean;
   selectionLoading: boolean;
   hasChartData: boolean;
-  chartSeries: ApexAxisChartSeries;
-  chartOptions: ApexOptions;
-  brushSeries: ApexAxisChartSeries;
-  brushOptions: ApexOptions;
+  chartOptions: EChartsOption;
   selectionError: string | null;
   portfolioError: string | null;
   portfolioLoading: boolean;
@@ -28,6 +25,7 @@ type PerformanceResultsMobileProps = {
   selectedRowKeys: string[];
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
+  onBrushSelection: (event: unknown) => void;
   onTogglePortfolioExpanded: (rowKey: string) => void;
   onListSelectionChange: (row: PerformanceRow, checked: boolean) => void;
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
@@ -40,10 +38,7 @@ const PerformanceResultsMobile = ({
   accumulatedLoading,
   selectionLoading,
   hasChartData,
-  chartSeries,
   chartOptions,
-  brushSeries,
-  brushOptions,
   selectionError,
   portfolioError,
   portfolioLoading,
@@ -53,6 +48,7 @@ const PerformanceResultsMobile = ({
   selectedRowKeys,
   totalSummary,
   performanceTotals,
+  onBrushSelection,
   onTogglePortfolioExpanded,
   onListSelectionChange,
   formatAmount,
@@ -105,17 +101,12 @@ const PerformanceResultsMobile = ({
               <Spin spinning={selectionLoading}>
                 {hasChartData ? (
                   <Space direction="vertical" size="small" className="page-stack">
-                    <ReactApexChart
-                      options={chartOptions}
-                      series={chartSeries}
-                      type="line"
-                      height={360}
-                    />
-                    <ReactApexChart
-                      options={brushOptions}
-                      series={brushSeries}
-                      type="area"
-                      height={110}
+                    <ReactECharts
+                      option={chartOptions}
+                      style={{ height: 360, width: "100%" }}
+                      notMerge
+                      lazyUpdate
+                      onEvents={{ datazoom: onBrushSelection }}
                     />
                   </Space>
                 ) : (

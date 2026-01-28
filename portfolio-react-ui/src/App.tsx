@@ -16,7 +16,7 @@ import ConnectPage from "./pages/ConnectPage";
 import { useCurrentClient } from "./state/currentClientContext";
 
 const { Content, Header } = Layout;
-const MOBILE_MAX_WIDTH = 375;
+const MOBILE_MAX_WIDTH = 500;
 
 const QUOTE_UPDATES_SUBSCRIPTION = gql`
   subscription QuoteUpdates($clientId: String) {
