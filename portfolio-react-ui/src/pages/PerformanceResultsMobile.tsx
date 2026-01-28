@@ -92,8 +92,13 @@ const PerformanceResultsMobile = ({
             Liste
           </button>
         </div>
-        <Carousel ref={carouselRef} dots draggable swipeToSlide>
-          <div className="performance-mobile-panel">
+        <Carousel
+          ref={carouselRef}
+          dots
+          draggable
+          swipeToSlide
+        >
+          <div className="performance-mobile-panel performance-mobile-panel--chart">
             {accumulatedLoading ? (
               <Spin />
             ) : (
