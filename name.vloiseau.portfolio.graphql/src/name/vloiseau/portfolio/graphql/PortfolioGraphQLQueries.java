@@ -120,13 +120,12 @@ public class PortfolioGraphQLQueries
                         securityId);
 
         LocalDate[] dates = index.getDates();
-        double[] accumulated = index.getAccumulatedPercentage();
-        long initialTotal = index.getTotals().length > 0 ? index.getTotals()[0] : 0;
+		long[] deltas = index.calculateDelta();
 
         List<DeltaPoint> points = new ArrayList<>(dates.length);
         for (int i = 0; i < dates.length; i++)
         {
-            long value = Math.round(accumulated[i] * initialTotal);
+			long value = deltas[i];
             points.add(new DeltaPoint(dates[i].toString(), new MoneyInfo(Money.of(index.getCurrency(), value))));
         }
 
