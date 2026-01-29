@@ -72,6 +72,17 @@ const CLIENT_FILTER_DELTA_QUERY = gql`
   }
 `;
 
+const REPORTING_PERIODS_QUERY = gql`
+  query ReportingPeriods($clientId: String, $referenceDate: String) {
+    reportingPeriods(clientId: $clientId, referenceDate: $referenceDate) {
+      code
+      label
+      startDate
+      endDate
+    }
+  }
+`;
+
 const CLIENT_FILTER_ACCUMULATED_QUERY = gql`
   query ClientFilterAccumulatedDelta(
     $clientId: String
@@ -172,6 +183,10 @@ const PerformancePage = () => {
   const apolloClient = useApolloClient();
   const { currentClient } = useCurrentClient();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const [selectedPeriodCode, setSelectedPeriodCode] = useState<string | null>(null);
+  const [periodReferenceDate, setPeriodReferenceDate] = useState(() =>
+    dayjs().format("YYYY-MM-DD")
+  );
   const [nativeStartDate, setNativeStartDate] = useState("");
   const [nativeEndDate, setNativeEndDate] = useState("");
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
@@ -236,9 +251,32 @@ const PerformancePage = () => {
     ? { startDate: formattedDates.startDate, endDate: formattedDates.endDate }
     : null;
 
+  const reportingPeriodsQuery = useQuery<{
+    reportingPeriods:
+      | Array<{
+          code: string | null;
+          label: string | null;
+          startDate: string | null;
+          endDate: string | null;
+        }>
+      | null;
+  }>(REPORTING_PERIODS_QUERY, {
+    variables: {
+      clientId: currentClient?.id ?? null,
+      referenceDate: periodReferenceDate,
+    },
+    fetchPolicy: "network-only",
+    skip: !currentClient?.id,
+  });
+
+  const reportingPeriods =
+    reportingPeriodsQuery.data?.reportingPeriods ?? [];
+
   useEffect(() => {
     if (!currentClient?.id) {
       setDateRange(null);
+      setSelectedPeriodCode(null);
+      setPeriodReferenceDate(dayjs().format("YYYY-MM-DD"));
       setSelectedFilterId(null);
       setSelectedRowKeys([]);
       setSortState({ columnKey: null, order: null });
@@ -256,6 +294,8 @@ const PerformancePage = () => {
       const parsed = JSON.parse(saved) as {
         startDate?: string | null;
         endDate?: string | null;
+        periodCode?: string | null;
+        periodReferenceDate?: string | null;
         filterId?: string | null;
         selectedRowKeys?: string[] | null;
         sortState?: { columnKey?: string | null; order?: "ascend" | "descend" | null } | null;
@@ -265,6 +305,10 @@ const PerformancePage = () => {
       } else {
         setDateRange(null);
       }
+      setSelectedPeriodCode(parsed.periodCode ?? null);
+      setPeriodReferenceDate(
+        parsed.periodReferenceDate ?? dayjs().format("YYYY-MM-DD")
+      );
       setSelectedFilterId(parsed.filterId ?? null);
       setSelectedRowKeys(parsed.selectedRowKeys ?? []);
       setSortState({
@@ -274,6 +318,8 @@ const PerformancePage = () => {
       setExpandedPortfolioKeys([]);
     } catch {
       setDateRange(null);
+      setSelectedPeriodCode(null);
+      setPeriodReferenceDate(dayjs().format("YYYY-MM-DD"));
       setSelectedFilterId(null);
       setSelectedRowKeys([]);
       setSortState({ columnKey: null, order: null });
@@ -315,6 +361,8 @@ const PerformancePage = () => {
     const payload = {
       startDate: dateRange?.[0]?.format("YYYY-MM-DD") ?? null,
       endDate: dateRange?.[1]?.format("YYYY-MM-DD") ?? null,
+      periodCode: selectedPeriodCode,
+      periodReferenceDate,
       filterId: selectedFilterId,
       selectedRowKeys,
       sortState,
@@ -323,7 +371,15 @@ const PerformancePage = () => {
       `performanceSettings:${currentClient.id}`,
       JSON.stringify(payload)
     );
-  }, [currentClient?.id, dateRange, selectedFilterId, selectedRowKeys, sortState]);
+  }, [
+    currentClient?.id,
+    dateRange,
+    periodReferenceDate,
+    selectedPeriodCode,
+    selectedFilterId,
+    selectedRowKeys,
+    sortState,
+  ]);
 
   const deltaQuery = useQuery<{
     clientFilterDelta: { amount: number | null; currencyCode: string | null } | null;
@@ -471,11 +527,28 @@ const PerformancePage = () => {
   };
 
   const updateNativeRange = (startValue: string, endValue: string) => {
+    setSelectedPeriodCode(null);
     if (startValue && endValue) {
       setDateRange([dayjs(startValue), dayjs(endValue)]);
       return;
     }
     setDateRange(null);
+  };
+
+  const handlePeriodChange = (value: string | null | undefined) => {
+    const nextValue = value ?? null;
+    setSelectedPeriodCode(nextValue);
+    if (!nextValue) return;
+
+    const selected = reportingPeriods.find((period) => period?.code === nextValue);
+    if (selected?.startDate && selected?.endDate) {
+      const nextRange: [Dayjs, Dayjs] = [
+        dayjs(selected.startDate),
+        dayjs(selected.endDate),
+      ];
+      setDateRange(nextRange);
+      setPeriodReferenceDate(dayjs().format("YYYY-MM-DD"));
+    }
   };
 
   const hasChartData = useMemo(
@@ -557,6 +630,34 @@ const PerformancePage = () => {
     });
     return map;
   }, [chartData.length, selectionSeries]);
+
+  useEffect(() => {
+    if (!selectedPeriodCode) return;
+    const today = dayjs().format("YYYY-MM-DD");
+    if (periodReferenceDate !== today) {
+      setPeriodReferenceDate(today);
+    }
+  }, [periodReferenceDate, selectedPeriodCode]);
+
+  useEffect(() => {
+    if (!selectedPeriodCode) return;
+    const selected = reportingPeriods.find((period) => period?.code === selectedPeriodCode);
+    if (!selected?.startDate || !selected?.endDate) return;
+
+    const nextRange: [Dayjs, Dayjs] = [
+      dayjs(selected.startDate),
+      dayjs(selected.endDate),
+    ];
+
+    const isSameRange =
+      dateRange &&
+      dateRange[0].isSame(nextRange[0], "day") &&
+      dateRange[1].isSame(nextRange[1], "day");
+
+    if (!isSameRange) {
+      setDateRange(nextRange);
+    }
+  }, [dateRange, reportingPeriods, selectedPeriodCode]);
 
   const formatAmount = (amount: number | null, currencyCode: string | null) => {
     if (amount === null || amount === undefined) {
@@ -959,7 +1060,27 @@ const PerformancePage = () => {
         </Dropdown.Button>
       }
     >
-      <Space direction="vertical" size="middle" className="form-stack">
+        <Space direction="vertical" size={4}>
+          <Typography.Text>Période prédéfinie</Typography.Text>
+          <Select
+            placeholder={
+              currentClient
+                ? "Sélectionnez une période"
+                : "Choisissez d'abord un client"
+            }
+            value={selectedPeriodCode}
+            onChange={(value) => handlePeriodChange(value as string | undefined)}
+            options={reportingPeriods.map((period) => ({
+              value: period?.code ?? "",
+              label: period?.label ?? period?.code ?? "",
+            }))}
+            loading={reportingPeriodsQuery.loading}
+            disabled={!currentClient}
+            allowClear
+            style={{ minWidth: 280 }}
+          />
+        </Space>
+        <Space direction="vertical" size="middle" className="form-stack">
         <Space direction="vertical" size={4}>
           <Typography.Text>Plage de dates</Typography.Text>
           {isNativePlatform ? (
@@ -981,17 +1102,22 @@ const PerformancePage = () => {
                   setNativeEndDate(nextValue);
                   updateNativeRange(nativeStartValue, nextValue);
                 }}
+                />
+              </Space>
+            ) : (
+              <DatePicker.RangePicker
+                value={dateRange}
+                onChange={(value) =>
+                  {
+                    setSelectedPeriodCode(null);
+                    setDateRange(
+                      value && value[0] && value[1] ? [value[0], value[1]] : null
+                    );
+                  }
+                }
+                allowClear
               />
-            </Space>
-          ) : (
-            <DatePicker.RangePicker
-              value={dateRange}
-              onChange={(value) =>
-                setDateRange(value && value[0] && value[1] ? [value[0], value[1]] : null)
-              }
-              allowClear
-            />
-          )}
+            )}
         </Space>
         <Space direction="vertical" size={4}>
           <Typography.Text>Client filter</Typography.Text>

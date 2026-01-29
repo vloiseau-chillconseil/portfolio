@@ -101,7 +101,7 @@ const PerformanceResultsMobile = ({
         <Spin />
       ) : (
         <Typography.Text>
-          Montant clientFilterDelta :{" "}
+          Perf :{" "}
           <Typography.Text strong>
             {delta?.amount?.toLocaleString("fr-FR", {
               maximumFractionDigits: 2,
@@ -110,7 +110,7 @@ const PerformanceResultsMobile = ({
           {delta?.currencyCode ? `(${delta.currencyCode})` : null}
           {zoomRange ? (
             <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-              {`(${zoomRange.startDate} - ${zoomRange.endDate})`}
+              {`Du ${zoomRange.startDate} au ${zoomRange.endDate}`}
             </Typography.Text>
           ) : null}
         </Typography.Text>

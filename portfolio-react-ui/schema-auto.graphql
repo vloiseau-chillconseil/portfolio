@@ -55,6 +55,7 @@ type Query {
   clients: [ClientInfo]
   clientFilterDelta(filterId: String, clientId: String, endDate: String, startDate: String): MoneyInfo
   portfolioSecurityPerformance(filterId: String, clientId: String, endDate: String, startDate: String): [PortfolioSecurityPerformanceInfo]
+  reportingPeriods(clientId: String, referenceDate: String): [ReportingPeriodInfo]
   clientFilters(clientId: String): [ClientFilterInfo]
 }
 
@@ -62,6 +63,13 @@ type QuoteUpdateProgress {
   completedTaskCount: Int!
   taskCount: Int!
   timestamp: Long!
+}
+
+type ReportingPeriodInfo {
+  code: String
+  endDate: String
+  label: String
+  startDate: String
 }
 
 type SecurityPerformanceInfo {
