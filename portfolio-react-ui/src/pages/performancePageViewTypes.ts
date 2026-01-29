@@ -8,7 +8,7 @@ export type PerformanceRow = {
   startCurrency: string | null;
   portfolioId: string | null;
   securityId: string | null;
-  rowType: "portfolio" | "security";
+  rowType: "portfolio" | "security" | "classification";
   children?: PerformanceRow[];
   taxonomyAssignments?: Array<{
     taxonomyId: string | null;
@@ -16,6 +16,8 @@ export type PerformanceRow = {
     classificationId: string | null;
     classificationName: string | null;
   }>;
+  taxonomyId?: string | null;
+  classificationId?: string | null;
 };
 
 export type SortState = {

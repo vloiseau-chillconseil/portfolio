@@ -35,6 +35,7 @@ import name.abuchen.portfolio.snapshot.filter.ReadOnlyAccount;
 import name.abuchen.portfolio.snapshot.filter.ReadOnlyPortfolio;
 import name.abuchen.portfolio.snapshot.security.SecurityPerformanceRecord;
 import name.abuchen.portfolio.snapshot.security.SecurityPerformanceSnapshot;
+import name.abuchen.portfolio.ui.Messages;
 import name.abuchen.portfolio.ui.editor.ClientInput;
 import name.abuchen.portfolio.ui.editor.ClientInputFactory;
 import name.abuchen.portfolio.ui.jobs.priceupdate.PriceUpdateProgress;
@@ -183,7 +184,7 @@ public class PortfolioGraphQLQueries
                         client.getBaseCurrency());
 
         Client filteredClient = client;
-        List<Taxonomy> clientTaxonomies = filteredClient.getTaxonomies().stream()
+        List<Taxonomy> clientTaxonomies = input.get().getClient().getTaxonomies().stream()
                         .filter(Objects::nonNull)
                         .toList();
         Map<String, TaxonomyAggregation> taxonomyAggregations = clientTaxonomies.stream()
@@ -1051,6 +1052,21 @@ public class PortfolioGraphQLQueries
             }
         });
 
+        if (aggregation != null)
+        {
+            ClassificationPerformance unclassified = aggregation.classificationPerformance
+                            .get(TaxonomyAggregation.UNCLASSIFIED_KEY);
+            if (unclassified != null)
+            {
+                classifications.add(new PerformanceTaxonomyClassificationInfo(
+                                TaxonomyAggregation.UNCLASSIFIED_KEY,
+                                null,
+                                Messages.LabelWithoutClassification,
+                                new MoneyInfo(unclassified.start.toMoney()),
+                                new MoneyInfo(unclassified.delta.toMoney()), unclassified.percent()));
+            }
+        }
+
         return new PerformanceTaxonomyInfo(taxonomy.getId(), taxonomy.getName(), classifications);
     }
 
@@ -1065,7 +1081,10 @@ public class PortfolioGraphQLQueries
         {
             List<Classification> classifications = aggregation.taxonomy.getClassifications(security);
             if (classifications == null || classifications.isEmpty())
+            {
+                aggregateUnclassifiedPerformance(aggregation, baseValue, delta);
                 continue;
+            }
 
             for (Classification classification : classifications)
             {
@@ -1091,8 +1110,17 @@ public class PortfolioGraphQLQueries
         }
     }
 
+    private void aggregateUnclassifiedPerformance(TaxonomyAggregation aggregation, Money baseValue, Money delta)
+    {
+        ClassificationPerformance performance = aggregation.classificationPerformance
+                        .computeIfAbsent(TaxonomyAggregation.UNCLASSIFIED_KEY,
+                                        key -> new ClassificationPerformance(aggregation.currency));
+        performance.add(baseValue, delta);
+    }
+
     private static final class TaxonomyAggregation
     {
+        private static final String UNCLASSIFIED_KEY = "$unassigned$";
         private final Taxonomy taxonomy;
         private final String currency;
         private final Map<String, ClassificationPerformance> classificationPerformance = new HashMap<>();

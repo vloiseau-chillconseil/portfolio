@@ -252,6 +252,116 @@ type PortfolioPerformanceResult = {
 const isNonNullable = <T,>(value: T | null | undefined): value is T =>
   value !== null && value !== undefined;
 
+type TaxonomyEntry = NonNullable<
+  NonNullable<PortfolioPerformanceResult["taxonomies"]>[number]
+>;
+type TaxonomyClassificationEntry = NonNullable<
+  NonNullable<TaxonomyEntry["classifications"]>[number]
+>;
+type SecurityEntry = NonNullable<
+  NonNullable<PortfolioPerformanceResult["securities"]>[number]
+>;
+
+const buildTaxonomyGroupingRows = (
+  taxonomyId: string,
+  taxonomy: TaxonomyEntry,
+  securities: SecurityEntry[]
+): PerformanceRow[] => {
+  const classifications = taxonomy.classifications?.filter(isNonNullable) ?? [];
+  if (!classifications.length) return [];
+
+  const normalized: Array<
+    TaxonomyClassificationEntry & { normalizationId: string; parentRef: string | null }
+  > = classifications.map((classification, index) => ({
+    ...classification,
+    normalizationId:
+      classification.classificationId ?? `classification-${taxonomyId}-${index}`,
+    parentRef: classification.parentId ?? null,
+  }));
+
+  const childrenByParent = new Map<string, typeof normalized>();
+  const ROOT_KEY = "__root__";
+  normalized.forEach((classification) => {
+    const parentKey = classification.parentRef ?? ROOT_KEY;
+    if (!childrenByParent.has(parentKey)) {
+      childrenByParent.set(parentKey, []);
+    }
+    childrenByParent.get(parentKey)!.push(classification);
+  });
+
+  const securitiesByClassification = new Map<string, PerformanceRow[]>();
+  securities.forEach((security, securityIndex) => {
+    security.taxonomyAssignments?.forEach((assignment, assignmentIndex) => {
+      if (assignment?.taxonomyId !== taxonomy.taxonomyId) return;
+      const classificationId = assignment.classificationId;
+      if (!classificationId) return;
+      const list = securitiesByClassification.get(classificationId) ?? [];
+      list.push({
+        key:
+          security.id ??
+          `${security.securityId ?? `security-${securityIndex}`}-classification-${classificationId}-${assignmentIndex}`,
+        name: security.name ?? "-",
+        deltaAmount: security.delta?.amount ?? null,
+        deltaCurrency: security.delta?.currencyCode ?? null,
+        deltaPercent: security.deltaPercent ?? null,
+        startAmount: security.startValue?.amount ?? null,
+        startCurrency: security.startValue?.currencyCode ?? null,
+        portfolioId: security.portfolioId ?? null,
+        securityId: security.securityId ?? null,
+        rowType: "security",
+        taxonomyAssignments: security.taxonomyAssignments ?? undefined,
+        taxonomyId: assignment.taxonomyId ?? null,
+        classificationId: assignment.classificationId ?? null,
+      });
+      securitiesByClassification.set(classificationId, list);
+    });
+  });
+
+  const buildRowForClassification = (
+    classification: (typeof normalized)[number]
+  ): PerformanceRow => {
+    const childClassifications =
+      childrenByParent.get(classification.normalizationId) ?? [];
+    childClassifications.sort((left, right) => {
+      const leftName = left.name ?? "";
+      const rightName = right.name ?? "";
+      return leftName.localeCompare(rightName, "fr");
+    });
+
+    const childRows = childClassifications.map((child) =>
+      buildRowForClassification(child)
+    );
+    const securityChildren =
+      securitiesByClassification.get(classification.classificationId ?? "") ?? [];
+    const children = [...childRows, ...securityChildren];
+
+    return {
+      key: `taxonomy-${taxonomyId}-${classification.normalizationId}`,
+      name: classification.name ?? "-",
+      deltaAmount: classification.delta?.amount ?? null,
+      deltaCurrency: classification.delta?.currencyCode ?? null,
+      deltaPercent: classification.deltaPercent ?? null,
+      startAmount: classification.startValue?.amount ?? null,
+      startCurrency: classification.startValue?.currencyCode ?? null,
+      portfolioId: null,
+      securityId: null,
+      rowType: "classification",
+      taxonomyId: taxonomy.taxonomyId ?? null,
+      classificationId: classification.classificationId ?? null,
+      children: children.length ? children : undefined,
+    } satisfies PerformanceRow;
+  };
+
+  const rootClassifications = childrenByParent.get(ROOT_KEY) ?? [];
+  if (!rootClassifications.length) {
+    return [];
+  }
+
+  return rootClassifications.map((classification) =>
+    buildRowForClassification(classification)
+  );
+};
+
 const UPDATE_QUOTES_MUTATION = gql`
   mutation UpdateQuotes($clientId: String, $scope: UpdateQuotesScope) {
     updateQuotes(clientId: $clientId, scope: $scope) {
@@ -298,15 +408,16 @@ const PerformancePage = () => {
   });
   const [selectionSeries, setSelectionSeries] = useState<SelectionSeries[]>([]);
   const [selectionLoading, setSelectionLoading] = useState(false);
-  const [selectionError, setSelectionError] = useState<string | null>(null);
-  const [expandedPortfolioKeys, setExpandedPortfolioKeys] = useState<string[]>([]);
-  const mobileCarouselRef = useRef<CarouselRef | null>(null);
-  const [mobileActiveSlide, setMobileActiveSlide] = useState(0);
-  const [isMobileLayout, setIsMobileLayout] = useState(
-    () => window.innerWidth <= 500
-  );
-  const skipNextSaveRef = useRef(false);
-  const [showFlatSecurities, setShowFlatSecurities] = useState(false);
+const [selectionError, setSelectionError] = useState<string | null>(null);
+const [expandedPortfolioKeys, setExpandedPortfolioKeys] = useState<string[]>([]);
+const mobileCarouselRef = useRef<CarouselRef | null>(null);
+const [mobileActiveSlide, setMobileActiveSlide] = useState(0);
+const [isMobileLayout, setIsMobileLayout] = useState(
+  () => window.innerWidth <= 500
+);
+const skipNextSaveRef = useRef(false);
+type GroupingMode = "portfolio" | "flat" | `taxonomy:${string}`;
+const [groupingMode, setGroupingMode] = useState<GroupingMode>("portfolio");
   const [listSortMode, setListSortMode] = useState<"alpha" | "performance">(
     "performance"
   );
@@ -325,7 +436,7 @@ const PerformancePage = () => {
     skip: !currentClient?.id,
   });
 
-  const { data: filtersData, loading: filtersLoading } = useQuery<{
+const { data: filtersData, loading: filtersLoading } = useQuery<{
     clientFilters: Array<{ id: string | null; label: string | null }> | null;
   }>(CLIENT_FILTERS_QUERY, {
     variables: { clientId: currentClient?.id ?? null },
@@ -349,6 +460,17 @@ const PerformancePage = () => {
   const shouldFetch = hasClient && hasFilter && hasDates;
   const zoomRange = formattedDates
     ? { startDate: formattedDates.startDate, endDate: formattedDates.endDate }
+    : null;
+
+  useEffect(() => {
+    if (isMobileLayout && groupingMode.startsWith("taxonomy:")) {
+      setGroupingMode("portfolio");
+    }
+  }, [groupingMode, isMobileLayout]);
+
+  const showFlatSecurities = groupingMode === "flat";
+  const selectedTaxonomyId = groupingMode.startsWith("taxonomy:")
+    ? groupingMode.split(":")[1]
     : null;
 
   const reportingPeriodsQuery = useQuery<{
@@ -760,7 +882,7 @@ const PerformancePage = () => {
     })} %`;
   };
 
-  const performanceRows = useMemo<PerformanceRow[]>(() => {
+  const portfolioRows = useMemo<PerformanceRow[]>(() => {
     const result = portfolioPerformanceQuery.data?.portfolioSecurityPerformance;
     const portfolios = result?.portfolios?.filter(isNonNullable) ?? [];
     const securities = result?.securities?.filter(isNonNullable) ?? [];
@@ -834,26 +956,84 @@ const PerformancePage = () => {
     [compareRows]
   );
 
-  const sortedPerformanceRows = useMemo(
-    () => sortRowsWithChildren(performanceRows),
-    [performanceRows, sortRowsWithChildren]
+  const sortedPortfolioRows = useMemo(
+    () => sortRowsWithChildren(portfolioRows),
+    [portfolioRows, sortRowsWithChildren]
   );
 
   const securitiesOnlyRows = useMemo(() => {
-    const rows = sortedPerformanceRows.flatMap((row) =>
+    const rows = sortedPortfolioRows.flatMap((row) =>
       row.children?.length ? row.children.map((child) => ({ ...child })) : []
     );
     rows.sort(compareRows);
     return rows;
-  }, [compareRows, sortedPerformanceRows]);
+  }, [compareRows, sortedPortfolioRows]);
 
-  const mobilePerformanceRows = useMemo(() => sortedPerformanceRows, [sortedPerformanceRows]);
+  const mobilePerformanceRows = useMemo(() => sortedPortfolioRows, [sortedPortfolioRows]);
 
   const flatPerformanceRows = useMemo(() => {
     const flatten = (rows: PerformanceRow[]) =>
       rows.flatMap((row) => [row, ...(row.children ? flatten(row.children) : [])]);
-    return flatten(sortedPerformanceRows);
-  }, [sortedPerformanceRows]);
+    return flatten(sortedPortfolioRows);
+  }, [sortedPortfolioRows]);
+
+  const taxonomyList = useMemo(
+    () =>
+      portfolioPerformanceQuery.data?.portfolioSecurityPerformance?.taxonomies?.filter(
+        isNonNullable
+      ) ?? [],
+    [portfolioPerformanceQuery.data]
+  );
+
+  const taxonomyRowsById = useMemo(() => {
+    const result: Record<string, PerformanceRow[]> = {};
+    const data = portfolioPerformanceQuery.data?.portfolioSecurityPerformance;
+    if (!data) return result;
+    const securities = data.securities?.filter(isNonNullable) ?? [];
+
+    taxonomyList.forEach((taxonomy, index) => {
+      const taxonomyKey = taxonomy.taxonomyId ?? `taxonomy-${index}`;
+      const rows = buildTaxonomyGroupingRows(taxonomyKey, taxonomy, securities);
+      if (rows.length) {
+        result[taxonomy.taxonomyId ?? taxonomyKey] = rows;
+      }
+    });
+
+    return result;
+  }, [portfolioPerformanceQuery.data, taxonomyList]);
+
+  const desktopTableRows = useMemo(() => {
+    if (groupingMode === "flat") {
+      return securitiesOnlyRows;
+    }
+    if (groupingMode === "portfolio") {
+      return sortedPortfolioRows;
+    }
+    if (selectedTaxonomyId) {
+      return taxonomyRowsById[selectedTaxonomyId] ?? [];
+    }
+    return sortedPortfolioRows;
+  }, [groupingMode, securitiesOnlyRows, selectedTaxonomyId, sortedPortfolioRows, taxonomyRowsById]);
+
+  const groupingOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string }> = [
+      { value: "flat", label: "Titres à plat" },
+      { value: "portfolio", label: "Groupé par portefeuille" },
+    ];
+
+    taxonomyList.forEach((taxonomy) => {
+      if (!taxonomy.taxonomyId) return;
+      const label = taxonomy.taxonomyName ?? taxonomy.taxonomyId;
+      options.push({
+        value: `taxonomy:${taxonomy.taxonomyId}`,
+        label: `Groupé par taxonomie ${label}`,
+      });
+    });
+
+    return options;
+  }, [taxonomyList]);
+
+  const hasPerformanceData = desktopTableRows.length > 0;
 
   useEffect(() => {
     const progress = quoteProgress.data?.quoteUpdates;
@@ -1306,7 +1486,7 @@ const PerformancePage = () => {
               portfolioError={portfolioPerformanceQuery.error?.message ?? null}
               portfolioLoading={portfolioPerformanceQuery.loading}
               parametersPanel={parametersPanel}
-              performanceRows={performanceRows}
+              performanceRows={sortedPortfolioRows}
               mobilePerformanceRows={mobilePerformanceRows}
               showFlatSecurities={showFlatSecurities}
               securitiesRows={securitiesOnlyRows}
@@ -1321,7 +1501,9 @@ const PerformancePage = () => {
                 setListPerfDirection((previous) => (previous === "asc" ? "desc" : "asc"));
               }}
               onToggleFlatSecurities={() =>
-                setShowFlatSecurities((previous) => !previous)
+                setGroupingMode((previous) =>
+                  previous === "flat" ? "portfolio" : "flat"
+                )
               }
               expandedPortfolioKeys={expandedPortfolioKeys}
               selectedRowKeys={selectedRowKeys}
@@ -1345,16 +1527,17 @@ const PerformancePage = () => {
             selectionError={selectionError}
             portfolioError={portfolioPerformanceQuery.error?.message ?? null}
             portfolioLoading={portfolioPerformanceQuery.loading}
-              performanceRows={performanceRows}
-              securitiesRows={securitiesOnlyRows}
+              tableRows={desktopTableRows}
+              hasPerformanceData={hasPerformanceData}
               totalSummary={totalSummary}
               performanceTotals={performanceTotals}
               zoomRange={zoomRange}
-              showFlatSecurities={showFlatSecurities}
               selectedRowKeys={selectedRowKeys}
-            sortState={sortState}
-            onToggleFlatSecurities={() =>
-              setShowFlatSecurities((previous) => !previous)
+              sortState={sortState}
+            groupingMode={groupingMode}
+            groupingOptions={groupingOptions}
+            onGroupingModeChange={(value) =>
+              setGroupingMode(value as GroupingMode)
             }
             onRowSelectionChange={handleRowSelectionChange}
             onTableChange={handleTableChange}

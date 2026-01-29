@@ -1,5 +1,4 @@
-import { Alert, Button, Space, Spin, Table, Typography } from "antd";
-import { AlignLeftOutlined, UnorderedListOutlined } from "@ant-design/icons";
+import { Alert, Select, Space, Spin, Table, Typography } from "antd";
 import type { TableProps } from "antd";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
@@ -21,15 +20,16 @@ type PerformanceResultsDesktopProps = {
   selectionError: string | null;
   portfolioError: string | null;
   portfolioLoading: boolean;
-  performanceRows: PerformanceRow[];
-  securitiesRows: PerformanceRow[];
+  tableRows: PerformanceRow[];
+  hasPerformanceData: boolean;
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
   zoomRange: ZoomRange;
-  showFlatSecurities: boolean;
   selectedRowKeys: string[];
   sortState: SortState;
-  onToggleFlatSecurities: () => void;
+  groupingMode: string;
+  groupingOptions: Array<{ value: string; label: string }>;
+  onGroupingModeChange: (value: string) => void;
   onRowSelectionChange: (keys: Array<string | number>, rows: PerformanceRow[]) => void;
   onTableChange: TableProps<PerformanceRow>["onChange"];
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
@@ -46,22 +46,21 @@ const PerformanceResultsDesktop = ({
   selectionError,
   portfolioError,
   portfolioLoading,
-  performanceRows,
-  securitiesRows,
+  tableRows,
+  hasPerformanceData,
   totalSummary,
   performanceTotals,
   zoomRange,
-  showFlatSecurities,
   selectedRowKeys,
   sortState,
-  onToggleFlatSecurities,
+  groupingMode,
+  groupingOptions,
+  onGroupingModeChange,
   onRowSelectionChange,
   onTableChange,
   formatAmount,
   formatPercent,
 }: PerformanceResultsDesktopProps) => {
-  const tableRows = showFlatSecurities ? securitiesRows : performanceRows;
-
   return (
     <Space direction="vertical" size="large" className="page-stack">
       {deltaLoading ? (
@@ -121,27 +120,27 @@ const PerformanceResultsDesktop = ({
             />
           ) : portfolioLoading ? (
             <Spin />
-          ) : performanceRows.length ? (
+          ) : hasPerformanceData ? (
             <Space direction="vertical" size="middle" className="page-stack">
               <Typography.Text type="secondary">
                 Détail des performances du {zoomRange?.startDate} au{" "}
                 {zoomRange?.endDate}
               </Typography.Text>
-              <Button
-                type="default"
-                icon={
-                  showFlatSecurities ? <AlignLeftOutlined /> : <UnorderedListOutlined />
-                }
-                onClick={onToggleFlatSecurities}
-              >
-                {showFlatSecurities ? "Groupé par portefeuille" : "Titres à plat"}
-              </Button>
+              <Select
+                value={groupingMode}
+                options={groupingOptions}
+                onChange={onGroupingModeChange}
+                style={{ width: 320 }}
+              />
               <div className="performance-table-desktop">
                 <Table
                   rowSelection={{
                     selectedRowKeys,
                     onChange: onRowSelectionChange,
                     checkStrictly: true,
+                    getCheckboxProps: (record) => ({
+                      disabled: record.rowType === "classification",
+                    }),
                   }}
                   onChange={onTableChange}
                   tableLayout="fixed"
