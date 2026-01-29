@@ -495,7 +495,9 @@ const PerformancePage = () => {
       legend: { show: false },
       tooltip: {
         trigger: "axis",
-        showContent: false,
+        // On desktop we want the tooltip content back; keep it hidden on mobile
+        show: !isMobileLayout,
+        showContent: !isMobileLayout,
         valueFormatter: (value) =>
           Number(value).toLocaleString("fr-FR", {
             maximumFractionDigits: 2,
@@ -524,7 +526,7 @@ const PerformancePage = () => {
       },
       series,
     };
-  }, [chartData, selectionSeries]);
+  }, [chartData, isMobileLayout, selectionSeries]);
 
   const formatAmount = (amount: number | null, currencyCode: string | null) => {
     if (amount === null || amount === undefined) {
