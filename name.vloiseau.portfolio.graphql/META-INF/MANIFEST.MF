@@ -2,11 +2,11 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Portfolio GraphQL
 Bundle-SymbolicName: name.vloiseau.portfolio.graphql
-Bundle-Version: 0.81.2.vloiseau-4
+Bundle-Version: 0.81.2.vloiseau-5
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
-Require-Bundle: name.abuchen.portfolio;bundle-version="0.81.2.vloiseau-4",
- name.abuchen.portfolio.ui;bundle-version="0.81.2.vloiseau-4"
+Require-Bundle: name.abuchen.portfolio;bundle-version="0.81.2.vloiseau-5",
+ name.abuchen.portfolio.ui;bundle-version="0.81.2.vloiseau-5"
 Import-Package: com.google.gson,
  com.sun.net.httpserver,
  graphql,
