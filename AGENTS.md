@@ -42,3 +42,6 @@
 - Commit messages: short summary (<= 50 chars), optional body wrapped at 72 chars, and links like `Closes #123` or `Issue: https://...`.
 - Rebase on `master` before opening a PR; do not merge `master` into your branch.
 - Keep PRs focused and small; open a draft PR early for large changes.
+
+## React UI
+- React UI est dans le répertoire portfolio-react-ui, tu peux lire le fichier AGENTS.md dans ce répertoire.
