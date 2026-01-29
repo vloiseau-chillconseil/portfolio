@@ -24,6 +24,7 @@ type PerformanceResultsMobileProps = {
   selectionLoading: boolean;
   hasChartData: boolean;
   chartOptions: EChartsOption;
+  selectionColors: Record<string, string>;
   parametersPanel: React.ReactNode;
   selectionError: string | null;
   portfolioError: string | null;
@@ -57,6 +58,7 @@ const PerformanceResultsMobile = ({
   selectionLoading,
   hasChartData,
   chartOptions,
+  selectionColors,
   parametersPanel,
   selectionError,
   portfolioError,
@@ -244,66 +246,79 @@ const PerformanceResultsMobile = ({
                       </div>
                     </div>
                   </div>
-                  {listRows.map((row) => (
-                    <div
-                      key={row.key}
-                      className={`performance-list-item${
-                        row.isChild ? " performance-list-item--child" : ""
-                      }`}
-                    >
-                      <div className="performance-list-header">
-                        <Typography.Text strong={row.rowType === "portfolio" ? true : false} className="performance-list-title">
-                          {row.name}
-                        </Typography.Text>
-                        {row.rowType === "portfolio" && row.children?.length ? (
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={
-                              expandedPortfolioKeys.includes(row.key) ? (
-                                <UpOutlined />
-                              ) : (
-                                <DownOutlined />
-                              )
-                            }
-                            onClick={() => onTogglePortfolioExpanded(row.key)}
-                            aria-label={
-                              expandedPortfolioKeys.includes(row.key)
-                                ? "Réduire"
-                                : "Déployer"
+                  {listRows.map((row) => {
+                    const isSelected = selectedRowKeys.includes(row.key);
+                    const color = isSelected ? selectionColors[row.key] : undefined;
+                    const itemStyle =
+                      color && isSelected
+                        ? {
+                            borderInlineStart: `4px solid ${color}`,
+                            paddingInlineStart: 12,
+                          }
+                        : undefined;
+
+                    return (
+                      <div
+                        key={row.key}
+                        className={`performance-list-item${
+                          row.isChild ? " performance-list-item--child" : ""
+                        }`}
+                        style={itemStyle}
+                      >
+                        <div className="performance-list-header">
+                          <Typography.Text strong={row.rowType === "portfolio" ? true : false} className="performance-list-title">
+                            {row.name}
+                          </Typography.Text>
+                          {row.rowType === "portfolio" && row.children?.length ? (
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={
+                                expandedPortfolioKeys.includes(row.key) ? (
+                                  <UpOutlined />
+                                ) : (
+                                  <DownOutlined />
+                                )
+                              }
+                              onClick={() => onTogglePortfolioExpanded(row.key)}
+                              aria-label={
+                                expandedPortfolioKeys.includes(row.key)
+                                  ? "Réduire"
+                                  : "Déployer"
+                              }
+                            />
+                          ) : null}
+                        </div>
+                        <div className="performance-list-values">
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={(event) =>
+                              onListSelectionChange(row, event.target.checked)
                             }
                           />
-                        ) : null}
-                      </div>
-                      <div className="performance-list-values">
-                        <Checkbox
-                          checked={selectedRowKeys.includes(row.key)}
-                          onChange={(event) =>
-                            onListSelectionChange(row, event.target.checked)
-                          }
-                        />
-                        <div className="performance-list-metrics">
-                          <Typography.Text
-                            type="secondary"
-                            className="performance-list-value"
-                          >
-                            {formatPercent(row.deltaPercent)}
-                          </Typography.Text>
-                          <Typography.Text
-                            className="performance-list-value"
-                            style={{
-                              color:
-                                row.deltaAmount && row.deltaAmount < 0
-                                  ? "#cf1322"
-                                  : "#3f8600",
-                            }}
-                          >
-                            {formatAmount(row.deltaAmount, row.deltaCurrency)}
-                          </Typography.Text>
+                          <div className="performance-list-metrics">
+                            <Typography.Text
+                              type="secondary"
+                              className="performance-list-value"
+                            >
+                              {formatPercent(row.deltaPercent)}
+                            </Typography.Text>
+                            <Typography.Text
+                              className="performance-list-value"
+                              style={{
+                                color:
+                                  row.deltaAmount && row.deltaAmount < 0
+                                    ? "#cf1322"
+                                    : "#3f8600",
+                              }}
+                            >
+                              {formatAmount(row.deltaAmount, row.deltaCurrency)}
+                            </Typography.Text>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (

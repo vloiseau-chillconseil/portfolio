@@ -152,6 +152,18 @@ type SelectionSeries = {
   points: Array<{ date: string; amount: number; timestamp: number }>;
 };
 
+const CHART_COLORS = [
+  "#5470c6",
+  "#91cc75",
+  "#fac858",
+  "#ee6666",
+  "#73c0de",
+  "#3ba272",
+  "#fc8452",
+  "#9a60b4",
+  "#ea7ccc",
+];
+
 const PerformancePage = () => {
   const apolloClient = useApolloClient();
   const { currentClient } = useCurrentClient();
@@ -492,6 +504,7 @@ const PerformancePage = () => {
 
     return {
       animation: false,
+      color: CHART_COLORS,
       legend: { show: false },
       tooltip: {
         trigger: "axis",
@@ -527,6 +540,16 @@ const PerformancePage = () => {
       series,
     };
   }, [chartData, isMobileLayout, selectionSeries]);
+
+  const selectionColors = useMemo<Record<string, string>>(() => {
+    const offset = chartData.length ? 1 : 0;
+    const map: Record<string, string> = {};
+    selectionSeries.forEach((seriesEntry, index) => {
+      const colorIndex = (offset + index) % CHART_COLORS.length;
+      map[seriesEntry.key] = CHART_COLORS[colorIndex];
+    });
+    return map;
+  }, [chartData.length, selectionSeries]);
 
   const formatAmount = (amount: number | null, currencyCode: string | null) => {
     if (amount === null || amount === undefined) {
@@ -1067,10 +1090,11 @@ const PerformancePage = () => {
               <PerformanceResultsMobile
                 delta={delta}
                 deltaLoading={deltaQuery.loading}
-                accumulatedLoading={accumulatedQuery.loading}
-                selectionLoading={selectionLoading}
-                hasChartData={hasChartData}
-                chartOptions={chartOptions}
+              accumulatedLoading={accumulatedQuery.loading}
+              selectionLoading={selectionLoading}
+              hasChartData={hasChartData}
+              chartOptions={chartOptions}
+              selectionColors={selectionColors}
               selectionError={selectionError}
               portfolioError={portfolioPerformanceQuery.error?.message ?? null}
               portfolioLoading={portfolioPerformanceQuery.loading}
