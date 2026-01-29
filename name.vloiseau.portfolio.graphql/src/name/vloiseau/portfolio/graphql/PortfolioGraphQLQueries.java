@@ -22,6 +22,7 @@ import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot;
 import name.abuchen.portfolio.snapshot.ClientSnapshot;
 import name.abuchen.portfolio.snapshot.PerformanceIndex;
+import name.abuchen.portfolio.snapshot.ReportingPeriod;
 import name.abuchen.portfolio.snapshot.filter.ClientSecurityFilter;
 import name.abuchen.portfolio.snapshot.filter.PortfolioClientFilter;
 import name.abuchen.portfolio.snapshot.filter.ReadOnlyAccount;
@@ -59,6 +60,21 @@ public class PortfolioGraphQLQueries
         return findClientInput(clientId) //
                         .map(this::listClientFilters) //
                         .orElseGet(List::of);
+    }
+
+    @GraphQLQuery(name = "reportingPeriods")
+    public List<ReportingPeriodInfo> reportingPeriods(@GraphQLArgument(name = "clientId") String clientId,
+                    @GraphQLArgument(name = "referenceDate") String referenceDate)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return List.of();
+
+        LocalDate ref = referenceDate != null ? LocalDate.parse(referenceDate) : LocalDate.now();
+
+        return input.get().getReportingPeriods().stream()
+                        .map(period -> new ReportingPeriodInfo(period, ref))
+                        .toList();
     }
 
     @GraphQLQuery(name = "clientFilterDelta")
@@ -493,6 +509,47 @@ public class PortfolioGraphQLQueries
         public double getAmount()
         {
             return amount;
+        }
+    }
+
+    public static final class ReportingPeriodInfo
+    {
+        private final String code;
+        private final String label;
+        private final String startDate;
+        private final String endDate;
+
+        public ReportingPeriodInfo(ReportingPeriod period, LocalDate referenceDate)
+        {
+            this.code = period.getCode();
+            this.label = period.toString();
+            Interval interval = period.toInterval(referenceDate);
+            this.startDate = interval.getStart().toString();
+            this.endDate = interval.getEnd().toString();
+        }
+
+        @GraphQLQuery
+        public String getCode()
+        {
+            return code;
+        }
+
+        @GraphQLQuery
+        public String getLabel()
+        {
+            return label;
+        }
+
+        @GraphQLQuery
+        public String getStartDate()
+        {
+            return startDate;
+        }
+
+        @GraphQLQuery
+        public String getEndDate()
+        {
+            return endDate;
         }
     }
 
