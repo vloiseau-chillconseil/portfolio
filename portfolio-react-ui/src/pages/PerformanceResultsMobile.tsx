@@ -9,7 +9,7 @@ import {
 } from "@ant-design/icons";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type {
   PerformanceRow,
   PerformanceTotals,
@@ -256,6 +256,7 @@ const PerformanceResultsMobile = ({
                             paddingInlineStart: 12,
                           }
                         : undefined;
+                    const isExpanded = expandedPortfolioKeys.includes(row.key);
 
                     return (
                       <div
@@ -264,38 +265,57 @@ const PerformanceResultsMobile = ({
                           row.isChild ? " performance-list-item--child" : ""
                         }`}
                         style={itemStyle}
+                        onClick={(event: MouseEvent<HTMLDivElement>) => {
+                          if (
+                            row.rowType !== "portfolio" ||
+                            !row.children?.length ||
+                            (event.target as HTMLElement).closest(
+                              ".performance-list-checkbox"
+                            )
+                          ) {
+                            return;
+                          }
+                          onTogglePortfolioExpanded(row.key);
+                        }}
                       >
                         <div className="performance-list-header">
-                          <Typography.Text strong={row.rowType === "portfolio" ? true : false} className="performance-list-title">
+                          <Typography.Text
+                            strong={row.rowType === "portfolio" ? true : false}
+                            className="performance-list-title"
+                          >
                             {row.name}
                           </Typography.Text>
                           {row.rowType === "portfolio" && row.children?.length ? (
-                            <Button
-                              type="text"
-                              size="small"
-                              icon={
-                                expandedPortfolioKeys.includes(row.key) ? (
-                                  <UpOutlined />
-                                ) : (
-                                  <DownOutlined />
-                                )
-                              }
-                              onClick={() => onTogglePortfolioExpanded(row.key)}
-                              aria-label={
-                                expandedPortfolioKeys.includes(row.key)
-                                  ? "Réduire"
-                                  : "Déployer"
-                              }
-                            />
+                            <span
+                              className="performance-list-toggle"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={isExpanded ? "Réduire" : "Déployer"}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onTogglePortfolioExpanded(row.key);
+                              }}
+                              onKeyDown={(event: KeyboardEvent<HTMLSpanElement>) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  onTogglePortfolioExpanded(row.key);
+                                }
+                              }}
+                            >
+                              {isExpanded ? <UpOutlined /> : <DownOutlined />}
+                            </span>
                           ) : null}
                         </div>
                         <div className="performance-list-values">
-                          <Checkbox
-                            checked={isSelected}
-                            onChange={(event) =>
-                              onListSelectionChange(row, event.target.checked)
-                            }
-                          />
+                          <div className="performance-list-checkbox">
+                            <Checkbox
+                              checked={isSelected}
+                              onChange={(event) =>
+                                onListSelectionChange(row, event.target.checked)
+                              }
+                            />
+                          </div>
                           <div className="performance-list-metrics">
                             <Typography.Text
                               type="secondary"
