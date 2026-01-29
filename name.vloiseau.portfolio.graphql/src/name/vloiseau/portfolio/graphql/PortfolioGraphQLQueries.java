@@ -653,51 +653,46 @@ public class PortfolioGraphQLQueries
         SecurityPerformanceSnapshot performance = SecurityPerformanceSnapshot.create(filtered, converter, interval,
                         startSnapshot, endSnapshot);
 
-        Map<Security, name.abuchen.portfolio.snapshot.SecurityPosition> startPositions = startSnapshot.getPortfolios()
-                        .stream()
-                        .findFirst()
-                        .map(snapshot -> snapshot.getPositionsBySecurity())
-                        .orElseGet(Map::of);
-
         var termCurrency = converter.getTermCurrency();
         var portfolioBase = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
         var portfolioDelta = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
 
         List<SecurityPerformanceInfo> securities = performance.getRecords().stream()
                         .sorted((left, right) -> TextUtil.compare(left.getSecurityName(), right.getSecurityName()))
-                        .map(record -> toSecurityPerformanceInfo(record, startPositions, startDate, converter,
+                        .map(record -> toSecurityPerformanceInfo(record, filtered, startDate, endDate, converter,
                                         portfolioBase, portfolioDelta))
                         .toList();
 
-        double portfolioPercent = portfolioBase.isZero() ? 0d
-                        : portfolioDelta.getAmount() * 100d / (double) portfolioBase.getAmount();
+        PerformanceIndex portfolioIndex = PerformanceIndex
+                        .forPortfolio(client, converter, source, Interval.of(startDate, endDate), new ArrayList<>());
+        double portfolioPercent = portfolioIndex.getFinalAccumulatedPercentage() * 100d;
+        long portfolioStartValue = firstNonZero(portfolioIndex.getTotals());
 
         return new PortfolioSecurityPerformanceInfo(source.getUUID(), source.getName(),
                         source.getReferenceAccount() != null ? unwrapAccount(source.getReferenceAccount()).getUUID()
                                         : null,
                         source.getReferenceAccount() != null ? unwrapAccount(source.getReferenceAccount()).getName()
                                         : null,
-                        new MoneyInfo(portfolioBase.toMoney()), new MoneyInfo(portfolioDelta.toMoney()),
+                        new MoneyInfo(Money.of(termCurrency, portfolioStartValue)),
+                        new MoneyInfo(portfolioDelta.toMoney()),
                         portfolioPercent, securities);
     }
 
-    private SecurityPerformanceInfo toSecurityPerformanceInfo(SecurityPerformanceRecord record,
-                    Map<Security, name.abuchen.portfolio.snapshot.SecurityPosition> startPositions,
-                    LocalDate startDate, CurrencyConverterImpl converter,
+    private SecurityPerformanceInfo toSecurityPerformanceInfo(SecurityPerformanceRecord record, Client scopeClient,
+                    LocalDate startDate, LocalDate endDate, CurrencyConverterImpl converter,
                     name.abuchen.portfolio.money.MutableMoney portfolioBase,
                     name.abuchen.portfolio.money.MutableMoney portfolioDelta)
     {
         Security security = record.getSecurity();
-        Money baseValue = Money.of(converter.getTermCurrency(), 0);
-
-        name.abuchen.portfolio.snapshot.SecurityPosition position = startPositions.get(security);
-        if (position != null)
-            baseValue = position.calculateValue().with(converter.at(startDate));
+        PerformanceIndex securityIndex = PerformanceIndex.forInvestment(scopeClient, converter, security,
+                        Interval.of(startDate, endDate), new ArrayList<>());
+        long startValue = firstNonZero(securityIndex.getTotals());
+        Money baseValue = Money.of(converter.getTermCurrency(), startValue);
 
         portfolioBase.add(baseValue);
         portfolioDelta.add(record.getDelta());
 
-        double percent = baseValue.isZero() ? 0d : record.getDelta().getAmount() * 100d / (double) baseValue.getAmount();
+        double percent = securityIndex.getFinalAccumulatedPercentage() * 100d;
 
         return new SecurityPerformanceInfo(security.getUUID(), security.getName(), new MoneyInfo(baseValue),
                         new MoneyInfo(record.getDelta()), percent);
@@ -712,21 +707,27 @@ public class PortfolioGraphQLQueries
         SecurityPerformanceSnapshot performance = SecurityPerformanceSnapshot.create(client, converter, interval,
                         startSnapshot, endSnapshot);
 
-        Map<Security, name.abuchen.portfolio.snapshot.SecurityPosition> startPositions = startSnapshot
-                        .getJointPortfolio()
-                        .getPositionsBySecurity();
-
         var termCurrency = converter.getTermCurrency();
         var totalBase = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
         var totalDelta = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
 
-        performance.getRecords().forEach(record -> toSecurityPerformanceInfo(record, startPositions, startDate,
+        performance.getRecords().forEach(record -> toSecurityPerformanceInfo(record, client, startDate, endDate,
                         converter, totalBase, totalDelta));
 
-        double totalPercent = totalBase.isZero() ? 0d : totalDelta.getAmount() * 100d / (double) totalBase.getAmount();
+        PerformanceIndex totalIndex = PerformanceIndex.forClient(client, converter, Interval.of(startDate, endDate),
+                        new ArrayList<>());
+        double totalPercent = totalIndex.getFinalAccumulatedPercentage() * 100d;
+        long totalStartValue = firstNonZero(totalIndex.getTotals());
 
-        return new PortfolioSecurityPerformanceInfo("TOTAL", "Total", null, null,
-                        new MoneyInfo(totalBase.toMoney()), new MoneyInfo(totalDelta.toMoney()), totalPercent,
-                        List.of());
+        return new PortfolioSecurityPerformanceInfo("TOTAL", "Total", null, null, new MoneyInfo(Money.of(termCurrency,
+                        totalStartValue)), new MoneyInfo(totalDelta.toMoney()), totalPercent, List.of());
+    }
+
+    private long firstNonZero(long[] totals)
+    {
+        for (long value : totals)
+            if (value != 0)
+                return value;
+        return totals.length > 0 ? totals[0] : 0;
     }
 }
