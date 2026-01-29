@@ -127,6 +127,10 @@ const PORTFOLIO_SECURITY_PERFORMANCE_QUERY = gql`
       securities {
         securityId
         securityName
+        startValue {
+          amount
+          currencyCode
+        }
         delta {
           amount
           currencyCode
@@ -364,6 +368,9 @@ const PerformancePage = () => {
             | Array<{
                 securityId: string | null;
                 securityName: string | null;
+                startValue:
+                  | { amount: number | null; currencyCode: string | null }
+                  | null;
                 delta:
                   | { amount: number | null; currencyCode: string | null }
                   | null;
@@ -590,8 +597,8 @@ const PerformancePage = () => {
           deltaAmount: security?.delta?.amount ?? null,
           deltaCurrency: security?.delta?.currencyCode ?? null,
           deltaPercent: security?.deltaPercent ?? null,
-          startAmount: null,
-          startCurrency: null,
+          startAmount: security?.startValue?.amount ?? null,
+          startCurrency: security?.startValue?.currencyCode ?? null,
           portfolioId: portfolio?.portfolioId ?? null,
           securityId: security?.securityId ?? null,
           rowType: "security",
