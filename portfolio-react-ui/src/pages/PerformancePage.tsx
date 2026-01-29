@@ -122,22 +122,61 @@ const PORTFOLIO_SECURITY_PERFORMANCE_QUERY = gql`
       startDate: $startDate
       endDate: $endDate
     ) {
-      portfolioId
-      portfolioName
-      referenceAccountId
-      referenceAccountName
-      startValue {
-        amount
-        currencyCode
+      portfolios {
+        portfolioId
+        portfolioName
+        referenceAccountId
+        referenceAccountName
+        startValue {
+          amount
+          currencyCode
+        }
+        delta {
+          amount
+          currencyCode
+        }
+        deltaPercent
       }
-      delta {
-        amount
-        currencyCode
-      }
-      deltaPercent
       securities {
+        id
+        portfolioId
         securityId
-        securityName
+        name
+        startValue {
+          amount
+          currencyCode
+        }
+        delta {
+          amount
+          currencyCode
+        }
+        deltaPercent
+        taxonomyAssignments {
+          taxonomyId
+          taxonomyName
+          classificationId
+          classificationName
+        }
+      }
+      taxonomies {
+        taxonomyId
+        taxonomyName
+        classifications {
+          classificationId
+          parentId
+          name
+          startValue {
+            amount
+            currencyCode
+          }
+          delta {
+            amount
+            currencyCode
+          }
+          deltaPercent
+        }
+      }
+      total {
         startValue {
           amount
           currencyCode
@@ -151,6 +190,67 @@ const PORTFOLIO_SECURITY_PERFORMANCE_QUERY = gql`
     }
   }
 `;
+
+type MoneyValue = { amount: number | null; currencyCode: string | null } | null;
+
+type PortfolioPerformanceResult = {
+  portfolios:
+    | Array<{
+        portfolioId: string | null;
+        portfolioName: string | null;
+        referenceAccountId: string | null;
+        referenceAccountName: string | null;
+        startValue: MoneyValue;
+        delta: MoneyValue;
+        deltaPercent: number | null;
+      }>
+    | null;
+  securities:
+    | Array<{
+        id: string | null;
+        portfolioId: string | null;
+        securityId: string | null;
+        name: string | null;
+        startValue: MoneyValue;
+        delta: MoneyValue;
+        deltaPercent: number | null;
+        taxonomyAssignments:
+          | Array<{
+              taxonomyId: string | null;
+              taxonomyName: string | null;
+              classificationId: string | null;
+              classificationName: string | null;
+            }>
+          | null;
+      }>
+    | null;
+  taxonomies:
+    | Array<{
+        taxonomyId: string | null;
+        taxonomyName: string | null;
+        classifications:
+          | Array<{
+              classificationId: string | null;
+              parentId: string | null;
+              name: string | null;
+              startValue: MoneyValue;
+              delta: MoneyValue;
+              deltaPercent: number | null;
+            }>
+          | null;
+      }>
+    | null;
+  total:
+    | {
+        startValue: MoneyValue;
+        delta: MoneyValue;
+        deltaPercent: number | null;
+      }
+    | null;
+};
+
+const isNonNullable = <T,>(value: T | null | undefined): value is T =>
+  value !== null && value !== undefined;
 
 const UPDATE_QUOTES_MUTATION = gql`
   mutation UpdateQuotes($clientId: String, $scope: UpdateQuotesScope) {
@@ -411,30 +511,7 @@ const PerformancePage = () => {
   });
 
   const portfolioPerformanceQuery = useQuery<{
-    portfolioSecurityPerformance:
-      | Array<{
-          portfolioId: string | null;
-          portfolioName: string | null;
-          referenceAccountId: string | null;
-          referenceAccountName: string | null;
-          startValue: { amount: number | null; currencyCode: string | null } | null;
-          delta: { amount: number | null; currencyCode: string | null } | null;
-          deltaPercent: number;
-          securities:
-            | Array<{
-                securityId: string | null;
-                securityName: string | null;
-                startValue:
-                  | { amount: number | null; currencyCode: string | null }
-                  | null;
-                delta:
-                  | { amount: number | null; currencyCode: string | null }
-                  | null;
-                deltaPercent: number;
-              }>
-            | null;
-        }>
-      | null;
+    portfolioSecurityPerformance: PortfolioPerformanceResult | null;
   }>(PORTFOLIO_SECURITY_PERFORMANCE_QUERY, {
     variables: {
       clientId: currentClient?.id,
@@ -684,30 +761,31 @@ const PerformancePage = () => {
   };
 
   const performanceRows = useMemo<PerformanceRow[]>(() => {
-    const rows = portfolioPerformanceQuery.data?.portfolioSecurityPerformance ?? [];
-    return rows
-      .filter((portfolio) => portfolio?.portfolioId !== "TOTAL")
-      .map((portfolio, portfolioIndex) => {
-      const portfolioKey = portfolio?.portfolioId ?? `portfolio-${portfolioIndex}`;
-      const children: PerformanceRow[] = (portfolio?.securities ?? []).map(
-        (security, securityIndex) => ({
-          key: security?.securityId
-            ? `${portfolioKey}-${security.securityId}`
-            : `${portfolioKey}-security-${securityIndex}`,
-          name: security?.securityName ?? "-",
-          deltaAmount: security?.delta?.amount ?? null,
-          deltaCurrency: security?.delta?.currencyCode ?? null,
-          deltaPercent: security?.deltaPercent ?? null,
-          startAmount: security?.startValue?.amount ?? null,
-          startCurrency: security?.startValue?.currencyCode ?? null,
-          portfolioId: portfolio?.portfolioId ?? null,
-          securityId: security?.securityId ?? null,
-          rowType: "security",
-        })
-      );
+    const result = portfolioPerformanceQuery.data?.portfolioSecurityPerformance;
+    const portfolios = result?.portfolios?.filter(isNonNullable) ?? [];
+    const securities = result?.securities?.filter(isNonNullable) ?? [];
 
-      const portfolioName = portfolio?.portfolioName ?? "-";
-      const referenceName = portfolio?.referenceAccountName ?? "-";
+    return portfolios.map((portfolio, portfolioIndex) => {
+      const portfolioKey =
+        portfolio.portfolioId ?? `portfolio-${portfolioIndex}`;
+      const children: PerformanceRow[] = securities
+        .filter((security) => security.portfolioId === portfolio.portfolioId)
+        .map((security, securityIndex) => ({
+          key: security.id ?? `${portfolioKey}-security-${securityIndex}`,
+          name: security.name ?? "-",
+          deltaAmount: security.delta?.amount ?? null,
+          deltaCurrency: security.delta?.currencyCode ?? null,
+          deltaPercent: security.deltaPercent ?? null,
+          startAmount: security.startValue?.amount ?? null,
+          startCurrency: security.startValue?.currencyCode ?? null,
+          portfolioId: security.portfolioId ?? null,
+          securityId: security.securityId ?? null,
+          rowType: "security",
+          taxonomyAssignments: security.taxonomyAssignments ?? undefined,
+        }));
+
+      const portfolioName = portfolio.portfolioName ?? "-";
+      const referenceName = portfolio.referenceAccountName ?? "-";
 
       return {
         key: portfolioKey,
@@ -715,12 +793,12 @@ const PerformancePage = () => {
           portfolioName === "-"
             ? referenceName
             : `${portfolioName} (${referenceName})`,
-        deltaAmount: portfolio?.delta?.amount ?? null,
-        deltaCurrency: portfolio?.delta?.currencyCode ?? null,
-        deltaPercent: portfolio?.deltaPercent ?? null,
-        startAmount: portfolio?.startValue?.amount ?? null,
-        startCurrency: portfolio?.startValue?.currencyCode ?? null,
-        portfolioId: portfolio?.portfolioId ?? null,
+        deltaAmount: portfolio.delta?.amount ?? null,
+        deltaCurrency: portfolio.delta?.currencyCode ?? null,
+        deltaPercent: portfolio.deltaPercent ?? null,
+        startAmount: portfolio.startValue?.amount ?? null,
+        startCurrency: portfolio.startValue?.currencyCode ?? null,
+        portfolioId: portfolio.portfolioId ?? null,
         securityId: null,
         rowType: "portfolio",
         children: children.length ? children : undefined,
@@ -956,54 +1034,50 @@ const PerformancePage = () => {
   };
 
   const performanceTotals = useMemo<PerformanceTotals>(() => {
-    const rows = portfolioPerformanceQuery.data?.portfolioSecurityPerformance ?? [];
-    const totalPortfolio = rows.find(
-      (portfolio) => portfolio?.portfolioId === "TOTAL"
-    );
+    const result = portfolioPerformanceQuery.data?.portfolioSecurityPerformance;
+    const totalEntry = result?.total;
 
-    if (totalPortfolio) {
-      const totalAmount = totalPortfolio.delta?.amount ?? null;
-      const startAmount = totalPortfolio.startValue?.amount ?? null;
+    if (totalEntry) {
+      const totalAmount = totalEntry.delta?.amount ?? null;
+      const startAmount = totalEntry.startValue?.amount ?? null;
       return {
         totalAmount,
         hasAmount: totalAmount !== null && totalAmount !== undefined,
-        currencyCode: totalPortfolio.delta?.currencyCode ?? null,
-        percentValue: totalPortfolio.deltaPercent ?? null,
+        currencyCode: totalEntry.delta?.currencyCode ?? null,
+        percentValue: totalEntry.deltaPercent ?? null,
         startAmount,
         hasStartAmount: startAmount !== null && startAmount !== undefined,
-        startCurrency: totalPortfolio.startValue?.currencyCode ?? null,
+        startCurrency: totalEntry.startValue?.currencyCode ?? null,
         percentSum: 0,
         percentCount: 0,
       };
     }
 
-    return rows.reduce(
-      (accumulator, account) => {
-        if (account?.portfolioId === "TOTAL") {
-          return accumulator;
-        }
+    const portfolios = result?.portfolios?.filter(isNonNullable) ?? [];
 
-        const amount = account?.delta?.amount;
+    return portfolios.reduce(
+      (accumulator, entry) => {
+        const amount = entry.delta?.amount;
         if (amount !== null && amount !== undefined) {
           accumulator.totalAmount += amount;
           accumulator.hasAmount = true;
         }
 
-        const startAmount = account?.startValue?.amount;
+        const startAmount = entry.startValue?.amount;
         if (startAmount !== null && startAmount !== undefined) {
           accumulator.startAmount += startAmount;
           accumulator.hasStartAmount = true;
         }
 
-        if (!accumulator.currencyCode && account?.delta?.currencyCode) {
-          accumulator.currencyCode = account.delta.currencyCode;
+        if (!accumulator.currencyCode && entry.delta?.currencyCode) {
+          accumulator.currencyCode = entry.delta.currencyCode;
         }
 
-        if (!accumulator.startCurrency && account?.startValue?.currencyCode) {
-          accumulator.startCurrency = account.startValue.currencyCode;
+        if (!accumulator.startCurrency && entry.startValue?.currencyCode) {
+          accumulator.startCurrency = entry.startValue.currencyCode;
         }
 
-        const percent = account?.deltaPercent;
+        const percent = entry.deltaPercent;
         if (percent !== null && percent !== undefined) {
           accumulator.percentSum += percent;
           accumulator.percentCount += 1;

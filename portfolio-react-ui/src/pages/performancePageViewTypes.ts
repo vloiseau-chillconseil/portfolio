@@ -10,6 +10,12 @@ export type PerformanceRow = {
   securityId: string | null;
   rowType: "portfolio" | "security";
   children?: PerformanceRow[];
+  taxonomyAssignments?: Array<{
+    taxonomyId: string | null;
+    taxonomyName: string | null;
+    classificationId: string | null;
+    classificationName: string | null;
+  }>;
 };
 
 export type SortState = {

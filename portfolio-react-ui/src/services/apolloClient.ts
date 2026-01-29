@@ -60,6 +60,7 @@ const errorLink = onError(({ graphQLErrors, networkError }) => {
   if (graphQLErrors?.length) {
     graphQLErrors.forEach((error) => {
       message.error(error.message);
+      console.error(error)
     });
   }
 

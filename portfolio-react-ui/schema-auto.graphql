@@ -38,15 +38,60 @@ type Mutation {
   updateQuotes(clientId: String, scope: UpdateQuotesScope): UpdateQuotesResult
 }
 
-type PortfolioSecurityPerformanceInfo {
+type PerformancePortfolioInfo {
   delta: MoneyInfo
   deltaPercent: Float!
   portfolioId: String
   portfolioName: String
   referenceAccountId: String
   referenceAccountName: String
-  securities: [SecurityPerformanceInfo]
   startValue: MoneyInfo
+}
+
+type PerformanceSecurityInfo {
+  delta: MoneyInfo
+  deltaPercent: Float!
+  id: String
+  name: String
+  portfolioId: String
+  securityId: String
+  startValue: MoneyInfo
+  taxonomyAssignments: [PerformanceTaxonomyAssignmentInfo]
+}
+
+type PerformanceTotalInfo {
+  delta: MoneyInfo
+  deltaPercent: Float!
+  startValue: MoneyInfo
+}
+
+type PerformanceTaxonomyAssignmentInfo {
+  classificationId: String
+  classificationName: String
+  taxonomyId: String
+  taxonomyName: String
+}
+
+type PerformanceTaxonomyClassificationInfo {
+  classificationId: String
+  delta: MoneyInfo
+  deltaPercent: Float!
+  name: String
+  parentId: String
+  startValue: MoneyInfo
+}
+
+type PerformanceTaxonomyInfo {
+  classifications: [PerformanceTaxonomyClassificationInfo]
+  taxonomyId: String
+  taxonomyName: String
+}
+
+type PortfolioSecurityPerformanceResult {
+  portfolios: [PerformancePortfolioInfo]
+  securities: [PerformanceSecurityInfo]
+  taxonomies: [PerformanceTaxonomyInfo]
+  total: PerformanceTotalInfo
 }
 
 """Query root"""
@@ -54,7 +99,7 @@ type Query {
   clientFilterAccumulatedDelta(filterId: String, portfolioId: String, clientId: String, endDate: String, securityId: String, startDate: String): [DeltaPoint]
   clients: [ClientInfo]
   clientFilterDelta(filterId: String, clientId: String, endDate: String, startDate: String): MoneyInfo
-  portfolioSecurityPerformance(filterId: String, clientId: String, endDate: String, startDate: String): [PortfolioSecurityPerformanceInfo]
+  portfolioSecurityPerformance(filterId: String, clientId: String, endDate: String, startDate: String): PortfolioSecurityPerformanceResult
   reportingPeriods(clientId: String, referenceDate: String): [ReportingPeriodInfo]
   clientFilters(clientId: String): [ClientFilterInfo]
 }
@@ -72,14 +117,6 @@ type ReportingPeriodInfo {
   startDate: String
 }
 
-type SecurityPerformanceInfo {
-  delta: MoneyInfo
-  deltaPercent: Float!
-  securityId: String
-  securityName: String
-  startValue: MoneyInfo
-}
-
 """Subscription root"""
 type Subscription {
   quoteUpdates(clientId: String): QuoteUpdateProgress
@@ -95,4 +132,3 @@ enum UpdateQuotesScope {
   ALL
   HOLDINGS
 }
-

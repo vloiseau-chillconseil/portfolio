@@ -3,21 +3,27 @@ package name.vloiseau.portfolio.graphql;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import io.leangen.graphql.annotations.GraphQLArgument;
 import io.leangen.graphql.annotations.GraphQLMutation;
 import io.leangen.graphql.annotations.GraphQLQuery;
 import io.leangen.graphql.annotations.GraphQLSubscription;
+import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Portfolio;
 import name.abuchen.portfolio.model.Security;
+import name.abuchen.portfolio.model.Taxonomy;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
 import name.abuchen.portfolio.money.Money;
+import name.abuchen.portfolio.money.MutableMoney;
 import name.abuchen.portfolio.money.Values;
 import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot;
 import name.abuchen.portfolio.snapshot.ClientSnapshot;
@@ -149,7 +155,7 @@ public class PortfolioGraphQLQueries
     }
 
     @GraphQLQuery(name = "portfolioSecurityPerformance")
-    public List<PortfolioSecurityPerformanceInfo> portfolioSecurityPerformance(
+    public PortfolioSecurityPerformanceResult portfolioSecurityPerformance(
                     @GraphQLArgument(name = "clientId") String clientId,
                     @GraphQLArgument(name = "filterId") String filterId,
                     @GraphQLArgument(name = "startDate") String startDate,
@@ -157,7 +163,7 @@ public class PortfolioGraphQLQueries
     {
         Optional<ClientInput> input = findClientInput(clientId);
         if (input.isEmpty())
-            return List.of();
+            return new PortfolioSecurityPerformanceResult(List.of(), List.of(), List.of(), null);
 
         LocalDate start = LocalDate.parse(startDate);
         LocalDate end = LocalDate.parse(endDate);
@@ -169,7 +175,7 @@ public class PortfolioGraphQLQueries
             Optional<ClientFilterMenu.Item> item = menu.getAllItems().filter(i -> i.getId().equals(filterId))
                             .findFirst();
             if (item.isEmpty())
-                return List.of();
+                return new PortfolioSecurityPerformanceResult(List.of(), List.of(), List.of(), null);
             client = item.get().getFilter().filter(client);
         }
 
@@ -177,16 +183,32 @@ public class PortfolioGraphQLQueries
                         client.getBaseCurrency());
 
         Client filteredClient = client;
-        List<PortfolioSecurityPerformanceInfo> results = new ArrayList<>();
-        results.add(toTotalPortfolioPerformanceInfo(filteredClient, converter, start, end));
-        results.addAll(filteredClient.getPortfolios().stream()
+        List<Taxonomy> clientTaxonomies = filteredClient.getTaxonomies().stream()
+                        .filter(Objects::nonNull)
+                        .toList();
+        Map<String, TaxonomyAggregation> taxonomyAggregations = clientTaxonomies.stream()
+                        .collect(Collectors.toMap(Taxonomy::getId,
+                                        taxonomy -> new TaxonomyAggregation(taxonomy, converter.getTermCurrency())));
+
+        List<PerformancePortfolioInfo> portfolios = new ArrayList<>();
+        List<PerformanceSecurityInfo> securities = new ArrayList<>();
+        filteredClient.getPortfolios().stream()
                         .sorted((left, right) -> TextUtil.compare(left.getName(), right.getName()))
-                        .map(portfolio -> {
+                        .forEach(portfolio -> {
                             Portfolio source = unwrapPortfolio(portfolio);
-                            return toPortfolioPerformanceInfo(portfolio, source, filteredClient, converter, start, end);
-                        })
-                        .toList());
-        return results;
+                            collectPortfolioPerformance(portfolios, securities, portfolio, source, filteredClient,
+                                            converter, start, end, taxonomyAggregations);
+                        });
+
+        PerformanceTotalInfo total = toTotalPerformanceInfo(filteredClient, converter, start, end);
+
+        List<PerformanceTaxonomyInfo> taxonomies = clientTaxonomies.stream()
+                        .map(taxonomy -> toPerformanceTaxonomyInfo(taxonomy,
+                                        taxonomyAggregations.get(taxonomy.getId())))
+                        .filter(Objects::nonNull)
+                        .toList();
+
+        return new PortfolioSecurityPerformanceResult(portfolios, securities, taxonomies, total);
     }
 
     @GraphQLMutation(name = "updateQuotes")
@@ -577,7 +599,49 @@ public class PortfolioGraphQLQueries
         }
     }
 
-    public static final class PortfolioSecurityPerformanceInfo
+    public static final class PortfolioSecurityPerformanceResult
+    {
+        private final List<PerformancePortfolioInfo> portfolios;
+        private final List<PerformanceSecurityInfo> securities;
+        private final List<PerformanceTaxonomyInfo> taxonomies;
+        private final PerformanceTotalInfo total;
+
+        public PortfolioSecurityPerformanceResult(List<PerformancePortfolioInfo> portfolios,
+                        List<PerformanceSecurityInfo> securities, List<PerformanceTaxonomyInfo> taxonomies,
+                        PerformanceTotalInfo total)
+        {
+            this.portfolios = portfolios;
+            this.securities = securities;
+            this.taxonomies = taxonomies;
+            this.total = total;
+        }
+
+        @GraphQLQuery
+        public List<PerformancePortfolioInfo> getPortfolios()
+        {
+            return portfolios;
+        }
+
+        @GraphQLQuery
+        public List<PerformanceSecurityInfo> getSecurities()
+        {
+            return securities;
+        }
+
+        @GraphQLQuery
+        public List<PerformanceTaxonomyInfo> getTaxonomies()
+        {
+            return taxonomies;
+        }
+
+        @GraphQLQuery
+        public PerformanceTotalInfo getTotal()
+        {
+            return total;
+        }
+    }
+
+    public static final class PerformancePortfolioInfo
     {
         private final String portfolioId;
         private final String portfolioName;
@@ -586,11 +650,9 @@ public class PortfolioGraphQLQueries
         private final MoneyInfo startValue;
         private final MoneyInfo delta;
         private final double deltaPercent;
-        private final List<SecurityPerformanceInfo> securities;
 
-        public PortfolioSecurityPerformanceInfo(String portfolioId, String portfolioName, String referenceAccountId,
-                        String referenceAccountName, MoneyInfo startValue, MoneyInfo delta, double deltaPercent,
-                        List<SecurityPerformanceInfo> securities)
+        public PerformancePortfolioInfo(String portfolioId, String portfolioName, String referenceAccountId,
+                        String referenceAccountName, MoneyInfo startValue, MoneyInfo delta, double deltaPercent)
         {
             this.portfolioId = portfolioId;
             this.portfolioName = portfolioName;
@@ -599,7 +661,6 @@ public class PortfolioGraphQLQueries
             this.startValue = startValue;
             this.delta = delta;
             this.deltaPercent = deltaPercent;
-            this.securities = securities;
         }
 
         @GraphQLQuery
@@ -643,30 +704,43 @@ public class PortfolioGraphQLQueries
         {
             return deltaPercent;
         }
-
-        @GraphQLQuery
-        public List<SecurityPerformanceInfo> getSecurities()
-        {
-            return securities;
-        }
     }
 
-    public static final class SecurityPerformanceInfo
+    public static final class PerformanceSecurityInfo
     {
+        private final String id;
+        private final String portfolioId;
         private final String securityId;
-        private final String securityName;
+        private final String name;
         private final MoneyInfo startValue;
         private final MoneyInfo delta;
         private final double deltaPercent;
+        private final List<PerformanceTaxonomyAssignmentInfo> taxonomyAssignments;
 
-        public SecurityPerformanceInfo(String securityId, String securityName, MoneyInfo startValue, MoneyInfo delta,
-                        double deltaPercent)
+        public PerformanceSecurityInfo(String id, String portfolioId, String securityId, String name,
+                        MoneyInfo startValue, MoneyInfo delta, double deltaPercent,
+                        List<PerformanceTaxonomyAssignmentInfo> taxonomyAssignments)
         {
+            this.id = id;
+            this.portfolioId = portfolioId;
             this.securityId = securityId;
-            this.securityName = securityName;
+            this.name = name;
             this.startValue = startValue;
             this.delta = delta;
             this.deltaPercent = deltaPercent;
+            this.taxonomyAssignments = taxonomyAssignments;
+        }
+
+        @GraphQLQuery
+        public String getId()
+        {
+            return id;
+        }
+
+        @GraphQLQuery
+        public String getPortfolioId()
+        {
+            return portfolioId;
         }
 
         @GraphQLQuery
@@ -676,9 +750,47 @@ public class PortfolioGraphQLQueries
         }
 
         @GraphQLQuery
-        public String getSecurityName()
+        public String getName()
         {
-            return securityName;
+            return name;
+        }
+
+        @GraphQLQuery
+        public MoneyInfo getStartValue()
+        {
+            return startValue;
+        }
+
+        @GraphQLQuery
+        public MoneyInfo getDelta()
+        {
+            return delta;
+        }
+
+        @GraphQLQuery
+        public double getDeltaPercent()
+        {
+            return deltaPercent;
+        }
+
+        @GraphQLQuery
+        public List<PerformanceTaxonomyAssignmentInfo> getTaxonomyAssignments()
+        {
+            return taxonomyAssignments;
+        }
+    }
+
+    public static final class PerformanceTotalInfo
+    {
+        private final MoneyInfo startValue;
+        private final MoneyInfo delta;
+        private final double deltaPercent;
+
+        public PerformanceTotalInfo(MoneyInfo startValue, MoneyInfo delta, double deltaPercent)
+        {
+            this.startValue = startValue;
+            this.delta = delta;
+            this.deltaPercent = deltaPercent;
         }
 
         @GraphQLQuery
@@ -700,8 +812,141 @@ public class PortfolioGraphQLQueries
         }
     }
 
-    private PortfolioSecurityPerformanceInfo toPortfolioPerformanceInfo(Portfolio portfolio, Portfolio source,
-                    Client client, CurrencyConverterImpl converter, LocalDate startDate, LocalDate endDate)
+    public static final class PerformanceTaxonomyInfo
+    {
+        private final String taxonomyId;
+        private final String taxonomyName;
+        private final List<PerformanceTaxonomyClassificationInfo> classifications;
+
+        public PerformanceTaxonomyInfo(String taxonomyId, String taxonomyName,
+                        List<PerformanceTaxonomyClassificationInfo> classifications)
+        {
+            this.taxonomyId = taxonomyId;
+            this.taxonomyName = taxonomyName;
+            this.classifications = classifications;
+        }
+
+        @GraphQLQuery
+        public String getTaxonomyId()
+        {
+            return taxonomyId;
+        }
+
+        @GraphQLQuery
+        public String getTaxonomyName()
+        {
+            return taxonomyName;
+        }
+
+        @GraphQLQuery
+        public List<PerformanceTaxonomyClassificationInfo> getClassifications()
+        {
+            return classifications;
+        }
+    }
+
+    public static final class PerformanceTaxonomyClassificationInfo
+    {
+        private final String classificationId;
+        private final String parentId;
+        private final String name;
+        private final MoneyInfo startValue;
+        private final MoneyInfo delta;
+        private final double deltaPercent;
+
+        public PerformanceTaxonomyClassificationInfo(String classificationId, String parentId, String name,
+                        MoneyInfo startValue, MoneyInfo delta, double deltaPercent)
+        {
+            this.classificationId = classificationId;
+            this.parentId = parentId;
+            this.name = name;
+            this.startValue = startValue;
+            this.delta = delta;
+            this.deltaPercent = deltaPercent;
+        }
+
+        @GraphQLQuery
+        public String getClassificationId()
+        {
+            return classificationId;
+        }
+
+        @GraphQLQuery
+        public String getParentId()
+        {
+            return parentId;
+        }
+
+        @GraphQLQuery
+        public String getName()
+        {
+            return name;
+        }
+
+        @GraphQLQuery
+        public MoneyInfo getStartValue()
+        {
+            return startValue;
+        }
+
+        @GraphQLQuery
+        public MoneyInfo getDelta()
+        {
+            return delta;
+        }
+
+        @GraphQLQuery
+        public double getDeltaPercent()
+        {
+            return deltaPercent;
+        }
+    }
+
+    public static final class PerformanceTaxonomyAssignmentInfo
+    {
+        private final String taxonomyId;
+        private final String taxonomyName;
+        private final String classificationId;
+        private final String classificationName;
+
+        public PerformanceTaxonomyAssignmentInfo(String taxonomyId, String taxonomyName, String classificationId,
+                        String classificationName)
+        {
+            this.taxonomyId = taxonomyId;
+            this.taxonomyName = taxonomyName;
+            this.classificationId = classificationId;
+            this.classificationName = classificationName;
+        }
+
+        @GraphQLQuery
+        public String getTaxonomyId()
+        {
+            return taxonomyId;
+        }
+
+        @GraphQLQuery
+        public String getTaxonomyName()
+        {
+            return taxonomyName;
+        }
+
+        @GraphQLQuery
+        public String getClassificationId()
+        {
+            return classificationId;
+        }
+
+        @GraphQLQuery
+        public String getClassificationName()
+        {
+            return classificationName;
+        }
+    }
+
+    private void collectPortfolioPerformance(List<PerformancePortfolioInfo> portfolios,
+                    List<PerformanceSecurityInfo> securities, Portfolio portfolio, Portfolio source, Client client,
+                    CurrencyConverterImpl converter, LocalDate startDate, LocalDate endDate,
+                    Map<String, TaxonomyAggregation> taxonomyAggregations)
     {
         Client filtered = new PortfolioClientFilter(portfolio).filter(client);
         ClientSnapshot startSnapshot = ClientSnapshot.create(filtered, converter, startDate);
@@ -711,34 +956,35 @@ public class PortfolioGraphQLQueries
                         startSnapshot, endSnapshot);
 
         var termCurrency = converter.getTermCurrency();
-        var portfolioBase = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
-        var portfolioDelta = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
+        var portfolioDelta = MutableMoney.of(termCurrency);
 
-        List<SecurityPerformanceInfo> securities = performance.getRecords().stream()
+        List<PerformanceSecurityInfo> portfolioSecurities = performance.getRecords().stream()
                         .sorted((left, right) -> TextUtil.compare(left.getSecurityName(), right.getSecurityName()))
                         .map(record -> toSecurityPerformanceInfo(record, filtered, startDate, endDate, converter,
-                                        portfolioBase, portfolioDelta))
+                                        portfolioDelta, source.getUUID(), taxonomyAggregations))
                         .toList();
 
         PerformanceIndex portfolioIndex = PerformanceIndex
-                        .forPortfolio(client, converter, source, Interval.of(startDate, endDate), new ArrayList<>());
+                        .forPortfolio(client, converter, source, interval, new ArrayList<>());
         double portfolioPercent = portfolioIndex.getFinalAccumulatedPercentage() * 100d;
         long portfolioStartValue = firstNonZero(portfolioIndex.getTotals());
+        String referenceAccountId = source.getReferenceAccount() != null
+                        ? unwrapAccount(source.getReferenceAccount()).getUUID()
+                        : null;
+        String referenceAccountName = source.getReferenceAccount() != null
+                        ? unwrapAccount(source.getReferenceAccount()).getName()
+                        : null;
 
-        return new PortfolioSecurityPerformanceInfo(source.getUUID(), source.getName(),
-                        source.getReferenceAccount() != null ? unwrapAccount(source.getReferenceAccount()).getUUID()
-                                        : null,
-                        source.getReferenceAccount() != null ? unwrapAccount(source.getReferenceAccount()).getName()
-                                        : null,
-                        new MoneyInfo(Money.of(termCurrency, portfolioStartValue)),
-                        new MoneyInfo(portfolioDelta.toMoney()),
-                        portfolioPercent, securities);
+        portfolios.add(new PerformancePortfolioInfo(source.getUUID(), source.getName(), referenceAccountId,
+                        referenceAccountName, new MoneyInfo(Money.of(termCurrency, portfolioStartValue)),
+                        new MoneyInfo(portfolioDelta.toMoney()), portfolioPercent));
+        securities.addAll(portfolioSecurities);
     }
 
-    private SecurityPerformanceInfo toSecurityPerformanceInfo(SecurityPerformanceRecord record, Client scopeClient,
+    private PerformanceSecurityInfo toSecurityPerformanceInfo(SecurityPerformanceRecord record, Client scopeClient,
                     LocalDate startDate, LocalDate endDate, CurrencyConverterImpl converter,
-                    name.abuchen.portfolio.money.MutableMoney portfolioBase,
-                    name.abuchen.portfolio.money.MutableMoney portfolioDelta)
+                    MutableMoney portfolioDelta, String portfolioId,
+                    Map<String, TaxonomyAggregation> taxonomyAggregations)
     {
         Security security = record.getSecurity();
         PerformanceIndex securityIndex = PerformanceIndex.forInvestment(scopeClient, converter, security,
@@ -746,17 +992,21 @@ public class PortfolioGraphQLQueries
         long startValue = firstNonZero(securityIndex.getTotals());
         Money baseValue = Money.of(converter.getTermCurrency(), startValue);
 
-        portfolioBase.add(baseValue);
         portfolioDelta.add(record.getDelta());
 
         double percent = securityIndex.getFinalAccumulatedPercentage() * 100d;
 
-        return new SecurityPerformanceInfo(security.getUUID(), security.getName(), new MoneyInfo(baseValue),
-                        new MoneyInfo(record.getDelta()), percent);
+        List<PerformanceTaxonomyAssignmentInfo> assignments = toTaxonomyAssignments(security, baseValue,
+                        record.getDelta(), taxonomyAggregations);
+        String securityId = security.getUUID();
+        String entryId = portfolioId != null && securityId != null ? portfolioId + ":" + securityId : securityId;
+
+        return new PerformanceSecurityInfo(entryId, portfolioId, securityId, security.getName(),
+                        new MoneyInfo(baseValue), new MoneyInfo(record.getDelta()), percent, assignments);
     }
 
-    private PortfolioSecurityPerformanceInfo toTotalPortfolioPerformanceInfo(Client client,
-                    CurrencyConverterImpl converter, LocalDate startDate, LocalDate endDate)
+    private PerformanceTotalInfo toTotalPerformanceInfo(Client client, CurrencyConverterImpl converter,
+                    LocalDate startDate, LocalDate endDate)
     {
         ClientSnapshot startSnapshot = ClientSnapshot.create(client, converter, startDate);
         ClientSnapshot endSnapshot = ClientSnapshot.create(client, converter, endDate);
@@ -765,19 +1015,121 @@ public class PortfolioGraphQLQueries
                         startSnapshot, endSnapshot);
 
         var termCurrency = converter.getTermCurrency();
-        var totalBase = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
-        var totalDelta = name.abuchen.portfolio.money.MutableMoney.of(termCurrency);
+        var totalDelta = MutableMoney.of(termCurrency);
 
-        performance.getRecords().forEach(record -> toSecurityPerformanceInfo(record, client, startDate, endDate,
-                        converter, totalBase, totalDelta));
+        performance.getRecords().forEach(record -> totalDelta.add(record.getDelta()));
 
-        PerformanceIndex totalIndex = PerformanceIndex.forClient(client, converter, Interval.of(startDate, endDate),
-                        new ArrayList<>());
+        PerformanceIndex totalIndex = PerformanceIndex.forClient(client, converter, interval, new ArrayList<>());
         double totalPercent = totalIndex.getFinalAccumulatedPercentage() * 100d;
         long totalStartValue = firstNonZero(totalIndex.getTotals());
 
-        return new PortfolioSecurityPerformanceInfo("TOTAL", "Total", null, null, new MoneyInfo(Money.of(termCurrency,
-                        totalStartValue)), new MoneyInfo(totalDelta.toMoney()), totalPercent, List.of());
+        return new PerformanceTotalInfo(new MoneyInfo(Money.of(termCurrency, totalStartValue)),
+                        new MoneyInfo(totalDelta.toMoney()), totalPercent);
+    }
+
+    private PerformanceTaxonomyInfo toPerformanceTaxonomyInfo(Taxonomy taxonomy, TaxonomyAggregation aggregation)
+    {
+        if (taxonomy == null)
+            return null;
+
+        List<PerformanceTaxonomyClassificationInfo> classifications = new ArrayList<>();
+        taxonomy.foreach(new Taxonomy.Visitor()
+        {
+            @Override
+            public void visit(Classification classification)
+            {
+                String parentId = classification.getParent() != null ? classification.getParent().getId() : null;
+                ClassificationPerformance performance = aggregation != null
+                                ? aggregation.classificationPerformance.get(classification.getId())
+                                : null;
+                MoneyInfo startValue = performance != null ? new MoneyInfo(performance.start.toMoney()) : null;
+                MoneyInfo delta = performance != null ? new MoneyInfo(performance.delta.toMoney()) : null;
+                double percent = performance != null ? performance.percent() : 0d;
+
+                classifications.add(new PerformanceTaxonomyClassificationInfo(classification.getId(), parentId,
+                                classification.getName(), startValue, delta, percent));
+            }
+        });
+
+        return new PerformanceTaxonomyInfo(taxonomy.getId(), taxonomy.getName(), classifications);
+    }
+
+    private List<PerformanceTaxonomyAssignmentInfo> toTaxonomyAssignments(Security security, Money baseValue,
+                    Money delta, Map<String, TaxonomyAggregation> taxonomyAggregations)
+    {
+        if (taxonomyAggregations.isEmpty() || security == null)
+            return List.of();
+
+        List<PerformanceTaxonomyAssignmentInfo> assignments = new ArrayList<>();
+        for (TaxonomyAggregation aggregation : taxonomyAggregations.values())
+        {
+            List<Classification> classifications = aggregation.taxonomy.getClassifications(security);
+            if (classifications == null || classifications.isEmpty())
+                continue;
+
+            for (Classification classification : classifications)
+            {
+                assignments.add(new PerformanceTaxonomyAssignmentInfo(aggregation.taxonomy.getId(),
+                                aggregation.taxonomy.getName(), classification.getId(), classification.getName()));
+                aggregateClassificationPerformance(aggregation, classification, baseValue, delta);
+            }
+        }
+
+        return assignments.isEmpty() ? List.of() : assignments;
+    }
+
+    private void aggregateClassificationPerformance(TaxonomyAggregation aggregation, Classification classification,
+                    Money baseValue, Money delta)
+    {
+        Classification current = classification;
+        while (current != null && !Classification.VIRTUAL_ROOT.equals(current.getId()))
+        {
+            ClassificationPerformance performance = aggregation.classificationPerformance
+                            .computeIfAbsent(current.getId(), key -> new ClassificationPerformance(aggregation.currency));
+            performance.add(baseValue, delta);
+            current = current.getParent();
+        }
+    }
+
+    private static final class TaxonomyAggregation
+    {
+        private final Taxonomy taxonomy;
+        private final String currency;
+        private final Map<String, ClassificationPerformance> classificationPerformance = new HashMap<>();
+
+        private TaxonomyAggregation(Taxonomy taxonomy, String currency)
+        {
+            this.taxonomy = taxonomy;
+            this.currency = currency;
+        }
+    }
+
+    private static final class ClassificationPerformance
+    {
+        private final MutableMoney start;
+        private final MutableMoney delta;
+
+        private ClassificationPerformance(String currency)
+        {
+            this.start = MutableMoney.of(currency);
+            this.delta = MutableMoney.of(currency);
+        }
+
+        private void add(Money startValue, Money deltaValue)
+        {
+            if (startValue != null)
+                this.start.add(startValue);
+            if (deltaValue != null)
+                this.delta.add(deltaValue);
+        }
+
+        private double percent()
+        {
+            long startAmount = this.start.getAmount();
+            if (startAmount == 0)
+                return 0d;
+            return (this.delta.getAmount() * 100d) / startAmount;
+        }
     }
 
     private long firstNonZero(long[] totals)
