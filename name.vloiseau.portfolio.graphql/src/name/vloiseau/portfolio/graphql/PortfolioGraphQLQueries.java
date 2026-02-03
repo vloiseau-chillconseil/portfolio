@@ -34,6 +34,7 @@ import name.abuchen.portfolio.snapshot.ClientPerformanceSnapshot;
 import name.abuchen.portfolio.snapshot.ClientSnapshot;
 import name.abuchen.portfolio.snapshot.PerformanceIndex;
 import name.abuchen.portfolio.snapshot.ReportingPeriod;
+import name.abuchen.portfolio.snapshot.filter.ClientClassificationFilter;
 import name.abuchen.portfolio.snapshot.filter.ClientSecurityFilter;
 import name.abuchen.portfolio.snapshot.filter.PortfolioClientFilter;
 import name.abuchen.portfolio.snapshot.filter.ReadOnlyAccount;
@@ -122,7 +123,8 @@ public class PortfolioGraphQLQueries
                     @GraphQLArgument(name = "endDate") String endDate,
                     @GraphQLArgument(name = "portfolioId") String portfolioId,
                     @GraphQLArgument(name = "securityId") String securityId,
-                    @GraphQLArgument(name = "referenceAccountId") String referenceAccountId)
+                    @GraphQLArgument(name = "referenceAccountId") String referenceAccountId,
+                    @GraphQLArgument(name = "classificationId") String classificationId)
     {
         Optional<ClientInput> input = findClientInput(clientId);
         if (input.isEmpty())
@@ -131,7 +133,16 @@ public class PortfolioGraphQLQueries
         LocalDate start = LocalDate.parse(startDate);
         LocalDate end = LocalDate.parse(endDate);
 
-        Client filtered = input.get().getClient();
+        Client baseClient = input.get().getClient();
+        Classification classificationFilter = null;
+        if (classificationId != null)
+        {
+            classificationFilter = findClassificationById(baseClient, classificationId);
+            if (classificationFilter == null)
+                throw new IllegalArgumentException("Unknown classificationId: " + classificationId); //$NON-NLS-1$
+        }
+
+        Client filtered = baseClient;
         if (filterId != null)
         {
             ClientFilterMenu menu = new ClientFilterMenu(input.get().getClient(), input.get().getPreferenceStore());
@@ -146,7 +157,7 @@ public class PortfolioGraphQLQueries
                         input.get().getClient().getBaseCurrency());
 
         PerformanceIndex index = createPerformanceIndex(filtered, converter, Interval.of(start, end), portfolioId,
-                        securityId, referenceAccountId);
+                        securityId, referenceAccountId, classificationFilter);
 
         LocalDate[] dates = index.getDates();
 		long[] deltas = index.calculateDelta();
@@ -344,29 +355,34 @@ public class PortfolioGraphQLQueries
     }
 
     private PerformanceIndex createPerformanceIndex(Client client, CurrencyConverterImpl converter, Interval interval,
-                    String portfolioId, String securityId, String referenceAccountId)
+                    String portfolioId, String securityId, String referenceAccountId, Classification classificationFilter)
     {
         if (referenceAccountId != null && (portfolioId != null || securityId != null))
             throw new IllegalArgumentException("Specify only one of referenceAccountId, portfolioId, or securityId"); //$NON-NLS-1$
 
+        Client scopedClient = client;
+        if (classificationFilter != null)
+            scopedClient = new ClientClassificationFilter(classificationFilter).filter(client);
+
         if (referenceAccountId != null)
         {
-            Account account = client.getAccounts().stream()
+            Account account = scopedClient.getAccounts().stream()
                             .filter(a -> referenceAccountId.equals(unwrapAccount(a).getUUID()))
                             .map(this::unwrapAccount)
                             .findFirst()
                             .orElse(null);
             if (account == null)
                 throw new IllegalArgumentException("Unknown referenceAccountId: " + referenceAccountId); //$NON-NLS-1$
-            return PerformanceIndex.forAccount(client, converter, account, interval, new ArrayList<>());
+
+            return PerformanceIndex.forAccount(scopedClient, converter, account, interval, new ArrayList<>());
         }
 
         if (portfolioId == null && securityId == null)
-            return PerformanceIndex.forClient(client, converter, interval, new ArrayList<>());
+            return PerformanceIndex.forClient(scopedClient, converter, interval, new ArrayList<>());
 
         if (portfolioId != null)
         {
-            Portfolio portfolio = client.getPortfolios().stream()
+            Portfolio portfolio = scopedClient.getPortfolios().stream()
                             .filter(p -> portfolioId.equals(unwrapPortfolio(p).getUUID()))
                             .findFirst()
                             .orElse(null);
@@ -374,24 +390,28 @@ public class PortfolioGraphQLQueries
                 throw new IllegalArgumentException("Unknown portfolioId: " + portfolioId); //$NON-NLS-1$
 
             if (securityId == null)
-                return PerformanceIndex.forPortfolio(client, converter, portfolio, interval, new ArrayList<>());
+                return PerformanceIndex.forPortfolio(scopedClient, converter, portfolio, interval, new ArrayList<>());
 
-            Security security = client.getSecurities().stream().filter(s -> securityId.equals(s.getUUID())).findFirst()
+            Security security = scopedClient.getSecurities().stream()
+                            .filter(s -> securityId.equals(s.getUUID()))
+                            .findFirst()
                             .orElse(null);
             if (security == null)
                 throw new IllegalArgumentException("Unknown securityId: " + securityId); //$NON-NLS-1$
 
-            Client portfolioFiltered = new PortfolioClientFilter(portfolio).filter(client);
+            Client portfolioFiltered = new PortfolioClientFilter(portfolio).filter(scopedClient);
             Client securityFiltered = new ClientSecurityFilter(security).filter(portfolioFiltered);
             return PerformanceIndex.forClient(securityFiltered, converter, interval, new ArrayList<>());
         }
 
-        Security security = client.getSecurities().stream().filter(s -> securityId.equals(s.getUUID())).findFirst()
+        Security security = scopedClient.getSecurities().stream()
+                        .filter(s -> securityId.equals(s.getUUID()))
+                        .findFirst()
                         .orElse(null);
         if (security == null)
             throw new IllegalArgumentException("Unknown securityId: " + securityId); //$NON-NLS-1$
 
-        Client securityFiltered = new ClientSecurityFilter(security).filter(client);
+        Client securityFiltered = new ClientSecurityFilter(security).filter(scopedClient);
         return PerformanceIndex.forClient(securityFiltered, converter, interval, new ArrayList<>());
     }
 
@@ -1330,5 +1350,23 @@ public class PortfolioGraphQLQueries
             if (value != 0)
                 return value;
         return totals.length > 0 ? totals[0] : 0;
+    }
+
+    private Classification findClassificationById(Client client, String classificationId)
+    {
+        if (classificationId == null)
+            return null;
+
+        for (Taxonomy taxonomy : client.getTaxonomies())
+        {
+            Classification root = taxonomy.getRoot();
+            if (root != null && classificationId.equals(root.getId()))
+                return root;
+
+            Classification classification = taxonomy.getClassificationById(classificationId);
+            if (classification != null)
+                return classification;
+        }
+        return null;
     }
 }

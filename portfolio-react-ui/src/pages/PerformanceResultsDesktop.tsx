@@ -214,9 +214,6 @@ const PerformanceResultsDesktop = ({
                     selectedRowKeys,
                     onChange: onRowSelectionChange,
                     checkStrictly: true,
-                    getCheckboxProps: (record) => ({
-                      disabled: record.rowType === "classification",
-                    }),
                   }}
                   onChange={onTableChange}
                   tableLayout="fixed"

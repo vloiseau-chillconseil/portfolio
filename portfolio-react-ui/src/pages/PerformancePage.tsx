@@ -90,6 +90,7 @@ const CLIENT_FILTER_ACCUMULATED_QUERY = gql`
     $portfolioId: String
     $securityId: String
     $referenceAccountId: String
+    $classificationId: String
     $startDate: String
     $endDate: String
   ) {
@@ -99,6 +100,7 @@ const CLIENT_FILTER_ACCUMULATED_QUERY = gql`
       portfolioId: $portfolioId
       securityId: $securityId
       referenceAccountId: $referenceAccountId
+      classificationId: $classificationId
       startDate: $startDate
       endDate: $endDate
     ) {
@@ -214,6 +216,9 @@ const PORTFOLIO_SECURITY_PERFORMANCE_QUERY = gql`
 `;
 
 type MoneyValue = { amount: number | null; currencyCode: string | null } | null;
+
+const flattenRows = (rows: PerformanceRow[]): PerformanceRow[] =>
+  rows.flatMap((row) => [row, ...(row.children ? flattenRows(row.children) : [])]);
 
 type PortfolioPerformanceResult = {
   portfolios:
@@ -678,6 +683,10 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       clientId: currentClient?.id,
       filterId: selectedFilterId,
       ...formattedDates,
+      classificationId: null,
+      portfolioId: null,
+      securityId: null,
+      referenceAccountId: null,
     },
     fetchPolicy: "network-only",
     skip: !shouldFetch,
@@ -1044,11 +1053,10 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
 
   const mobilePerformanceRows = useMemo(() => sortedPortfolioRows, [sortedPortfolioRows]);
 
-  const flatPerformanceRows = useMemo(() => {
-    const flatten = (rows: PerformanceRow[]) =>
-      rows.flatMap((row) => [row, ...(row.children ? flatten(row.children) : [])]);
-    return [...flatten(sortedPortfolioRows), ...referenceAccountRows.map((row) => ({ ...row }))];
-  }, [referenceAccountRows, sortedPortfolioRows]);
+  const flatPerformanceRows = useMemo(
+    () => [...flattenRows(sortedPortfolioRows), ...referenceAccountRows.map((row) => ({ ...row }))],
+    [referenceAccountRows, sortedPortfolioRows]
+  );
 
   const flatAssetRows = useMemo(() => {
     const rows = [...securitiesOnlyRows, ...referenceAccountRows.map((row) => ({ ...row }))];
@@ -1080,6 +1088,11 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
 
     return result;
   }, [performanceResult, referenceAccountEntries, securityEntries, taxonomyList]);
+
+  const flatTaxonomyRows = useMemo(() => {
+    const allRoots = Object.values(taxonomyRowsById).flat();
+    return flattenRows(allRoots);
+  }, [taxonomyRowsById]);
 
   const desktopTableRows = useMemo(() => {
     if (groupingMode === "flat") {
@@ -1159,7 +1172,8 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       return;
     }
 
-    const nextRows = flatPerformanceRows.filter((row) =>
+    const selectableRows = [...flatPerformanceRows, ...flatTaxonomyRows];
+    const nextRows = selectableRows.filter((row) =>
       selectedRowKeys.includes(row.key)
     );
 
@@ -1169,7 +1183,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     ) {
       setSelectedRows(nextRows);
     }
-  }, [flatPerformanceRows, selectedRowKeys, selectedRows]);
+  }, [flatPerformanceRows, flatTaxonomyRows, selectedRowKeys, selectedRows]);
 
   useEffect(() => {
     if (!shouldFetch) {
@@ -1207,6 +1221,8 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
                 portfolioId: row.portfolioId,
                 securityId: row.securityId,
                 referenceAccountId: row.referenceAccountId ?? null,
+                classificationId:
+                  row.rowType === "classification" ? row.classificationId ?? null : null,
               },
             fetchPolicy: "network-only",
           });
