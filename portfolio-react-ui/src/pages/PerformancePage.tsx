@@ -163,6 +163,7 @@ const PORTFOLIO_SECURITY_PERFORMANCE_QUERY = gql`
       referenceAccounts {
         accountId
         accountName
+        linkedPortfolioId
         startValue {
           amount
           currencyCode
@@ -986,14 +987,15 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     return referenceAccountEntries.map((account, accountIndex) => ({
       key: account.accountId ?? `reference-account-${accountIndex}`,
       name: account.accountName ?? "-",
-      deltaAmount: null,
-      deltaCurrency: null,
-      deltaPercent: null,
+      deltaAmount: account.delta?.amount ?? null,
+      deltaCurrency: account.delta?.currencyCode ?? null,
+      deltaPercent: account.deltaPercent ?? null,
       startAmount: account.startValue?.amount ?? null,
       startCurrency: account.startValue?.currencyCode ?? null,
       portfolioId: null,
       securityId: null,
       referenceAccountId: account.accountId ?? null,
+      linkedPortfolioId: account.linkedPortfolioId ?? null,
       rowType: "referenceAccount",
       taxonomyAssignments: account.taxonomyAssignments ?? undefined,
     }));
@@ -1084,13 +1086,16 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       return flatAssetRows;
     }
     if (groupingMode === "portfolio") {
-      return sortedPortfolioRows;
+      const orphanAccounts = referenceAccountRows.filter(
+        (row) => !row.linkedPortfolioId
+      );
+      return [...sortedPortfolioRows, ...orphanAccounts];
     }
     if (selectedTaxonomyId) {
       return taxonomyRowsById[selectedTaxonomyId] ?? [];
     }
     return sortedPortfolioRows;
-  }, [flatAssetRows, groupingMode, selectedTaxonomyId, sortedPortfolioRows, taxonomyRowsById]);
+  }, [flatAssetRows, groupingMode, referenceAccountRows, selectedTaxonomyId, sortedPortfolioRows, taxonomyRowsById]);
 
   const groupingOptions = useMemo(() => {
     const options: Array<{ value: string; label: string }> = [

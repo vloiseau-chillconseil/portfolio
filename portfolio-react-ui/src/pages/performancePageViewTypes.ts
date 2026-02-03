@@ -9,6 +9,7 @@ export type PerformanceRow = {
   portfolioId: string | null;
   securityId: string | null;
   referenceAccountId?: string | null;
+  linkedPortfolioId?: string | null;
   rowType: "portfolio" | "security" | "classification" | "referenceAccount";
   children?: PerformanceRow[];
   taxonomyAssignments?: Array<{

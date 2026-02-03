@@ -53,6 +53,7 @@ type PerformanceReferenceAccountInfo {
   accountName: String
   delta: MoneyInfo
   deltaPercent: Float!
+  linkedPortfolioId: String
   startValue: MoneyInfo
   taxonomyAssignments: [PerformanceTaxonomyAssignmentInfo]
 }

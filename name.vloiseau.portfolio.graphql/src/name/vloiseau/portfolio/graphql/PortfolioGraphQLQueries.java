@@ -206,10 +206,15 @@ public class PortfolioGraphQLQueries
                                             converter, start, end, taxonomyAggregations);
                         });
 
-        List<PerformanceReferenceAccountInfo> referenceAccounts = toReferenceAccountEntries(filteredClient, converter,
-                        start, end, taxonomyAggregations);
+        Map<String, String> accountPortfolioMap = filteredClient.getPortfolios().stream()
+                        .map(this::unwrapPortfolio)
+                        .filter(p -> p.getReferenceAccount() != null)
+                        .collect(Collectors.toMap(p -> unwrapAccount(p.getReferenceAccount()).getUUID(), Portfolio::getUUID));
 
-        PerformanceTotalInfo total = toTotalPerformanceInfo(filteredClient, converter, start, end);
+        List<PerformanceReferenceAccountInfo> referenceAccounts = toReferenceAccountEntries(filteredClient, converter,
+                        start, end, taxonomyAggregations, accountPortfolioMap);
+
+        PerformanceTotalInfo total = toTotalPerformanceInfo(filteredClient, converter, start, end, referenceAccounts);
 
         List<PerformanceTaxonomyInfo> taxonomies = clientTaxonomies.stream()
                         .map(taxonomy -> toPerformanceTaxonomyInfo(taxonomy,
@@ -820,10 +825,11 @@ public class PortfolioGraphQLQueries
         private final MoneyInfo delta;
         private final double deltaPercent;
         private final List<PerformanceTaxonomyAssignmentInfo> taxonomyAssignments;
+        private final String linkedPortfolioId;
 
         public PerformanceReferenceAccountInfo(String accountId, String accountName, MoneyInfo startValue,
                         MoneyInfo delta, double deltaPercent,
-                        List<PerformanceTaxonomyAssignmentInfo> taxonomyAssignments)
+                        List<PerformanceTaxonomyAssignmentInfo> taxonomyAssignments, String linkedPortfolioId)
         {
             this.accountId = accountId;
             this.accountName = accountName;
@@ -831,6 +837,7 @@ public class PortfolioGraphQLQueries
             this.delta = delta;
             this.deltaPercent = deltaPercent;
             this.taxonomyAssignments = taxonomyAssignments;
+            this.linkedPortfolioId = linkedPortfolioId;
         }
 
         @GraphQLQuery
@@ -867,6 +874,12 @@ public class PortfolioGraphQLQueries
         public List<PerformanceTaxonomyAssignmentInfo> getTaxonomyAssignments()
         {
             return taxonomyAssignments;
+        }
+
+        @GraphQLQuery
+        public String getLinkedPortfolioId()
+        {
+            return linkedPortfolioId;
         }
     }
 
@@ -1106,7 +1119,8 @@ public class PortfolioGraphQLQueries
 
     private List<PerformanceReferenceAccountInfo> toReferenceAccountEntries(Client client,
                     CurrencyConverterImpl converter, LocalDate startDate, LocalDate endDate,
-                    Map<String, TaxonomyAggregation> taxonomyAggregations)
+                    Map<String, TaxonomyAggregation> taxonomyAggregations,
+                    Map<String, String> accountPortfolioMap)
     {
         ClientSnapshot startSnapshot = ClientSnapshot.create(client, converter, startDate);
         ClientSnapshot endSnapshot = ClientSnapshot.create(client, converter, endDate);
@@ -1122,25 +1136,41 @@ public class PortfolioGraphQLQueries
         for (Account account : client.getAccounts())
         {
             Account unwrapped = unwrapAccount(account);
+            String linkedPortfolioId = accountPortfolioMap.get(unwrapped.getUUID());
             Money startValue = startValues.getOrDefault(unwrapped.getUUID(),
                             Money.of(converter.getTermCurrency(), 0));
             Money endValue = endValues.getOrDefault(unwrapped.getUUID(),
                             Money.of(converter.getTermCurrency(), 0));
-            Money delta = Money.of(converter.getTermCurrency(), 0);
-            double percent = 0d;
+            Money delta;
+            double percent;
+            Money taxonomyStart;
 
-            List<PerformanceTaxonomyAssignmentInfo> assignments = toTaxonomyAssignments(unwrapped, endValue, delta,
+            if (linkedPortfolioId != null)
+            {
+                delta = Money.of(converter.getTermCurrency(), 0);
+                percent = 0d;
+                taxonomyStart = endValue;
+            }
+            else
+            {
+                delta = endValue.subtract(startValue);
+                percent = startValue.getAmount() == 0 ? 0d : (delta.getAmount() * 100d) / startValue.getAmount();
+                taxonomyStart = startValue;
+            }
+
+            List<PerformanceTaxonomyAssignmentInfo> assignments = toTaxonomyAssignments(unwrapped, taxonomyStart, delta,
                             taxonomyAggregations);
 
+            Money displayStart = linkedPortfolioId != null ? endValue : startValue;
             entries.add(new PerformanceReferenceAccountInfo(unwrapped.getUUID(), unwrapped.getName(),
-                            new MoneyInfo(endValue), new MoneyInfo(delta), percent, assignments));
+                            new MoneyInfo(displayStart), new MoneyInfo(delta), percent, assignments, linkedPortfolioId));
         }
 
         return entries;
     }
 
     private PerformanceTotalInfo toTotalPerformanceInfo(Client client, CurrencyConverterImpl converter,
-                    LocalDate startDate, LocalDate endDate)
+                    LocalDate startDate, LocalDate endDate, List<PerformanceReferenceAccountInfo> referenceAccounts)
     {
         ClientSnapshot startSnapshot = ClientSnapshot.create(client, converter, startDate);
         ClientSnapshot endSnapshot = ClientSnapshot.create(client, converter, endDate);
