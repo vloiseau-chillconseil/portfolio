@@ -986,9 +986,9 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     return referenceAccountEntries.map((account, accountIndex) => ({
       key: account.accountId ?? `reference-account-${accountIndex}`,
       name: account.accountName ?? "-",
-      deltaAmount: account.delta?.amount ?? null,
-      deltaCurrency: account.delta?.currencyCode ?? null,
-      deltaPercent: account.deltaPercent ?? null,
+      deltaAmount: null,
+      deltaCurrency: null,
+      deltaPercent: null,
       startAmount: account.startValue?.amount ?? null,
       startCurrency: account.startValue?.currencyCode ?? null,
       portfolioId: null,
@@ -1032,11 +1032,6 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     [portfolioRows, sortRowsWithChildren]
   );
 
-  const combinedHierarchicalRows = useMemo(
-    () => [...sortedPortfolioRows, ...referenceAccountRows],
-    [referenceAccountRows, sortedPortfolioRows]
-  );
-
   const securitiesOnlyRows = useMemo(() => {
     const rows = sortedPortfolioRows.flatMap((row) =>
       row.children?.length ? row.children.map((child) => ({ ...child })) : []
@@ -1045,13 +1040,13 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     return rows;
   }, [compareRows, sortedPortfolioRows]);
 
-  const mobilePerformanceRows = useMemo(() => combinedHierarchicalRows, [combinedHierarchicalRows]);
+  const mobilePerformanceRows = useMemo(() => sortedPortfolioRows, [sortedPortfolioRows]);
 
   const flatPerformanceRows = useMemo(() => {
     const flatten = (rows: PerformanceRow[]) =>
       rows.flatMap((row) => [row, ...(row.children ? flatten(row.children) : [])]);
-    return flatten(combinedHierarchicalRows);
-  }, [combinedHierarchicalRows]);
+    return [...flatten(sortedPortfolioRows), ...referenceAccountRows.map((row) => ({ ...row }))];
+  }, [referenceAccountRows, sortedPortfolioRows]);
 
   const flatAssetRows = useMemo(() => {
     const rows = [...securitiesOnlyRows, ...referenceAccountRows.map((row) => ({ ...row }))];
@@ -1089,13 +1084,13 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       return flatAssetRows;
     }
     if (groupingMode === "portfolio") {
-      return combinedHierarchicalRows;
+      return sortedPortfolioRows;
     }
     if (selectedTaxonomyId) {
       return taxonomyRowsById[selectedTaxonomyId] ?? [];
     }
-    return combinedHierarchicalRows;
-  }, [combinedHierarchicalRows, flatAssetRows, groupingMode, selectedTaxonomyId, taxonomyRowsById]);
+    return sortedPortfolioRows;
+  }, [flatAssetRows, groupingMode, selectedTaxonomyId, sortedPortfolioRows, taxonomyRowsById]);
 
   const groupingOptions = useMemo(() => {
     const options: Array<{ value: string; label: string }> = [
@@ -1569,7 +1564,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
               portfolioError={portfolioPerformanceQuery.error?.message ?? null}
               portfolioLoading={portfolioPerformanceQuery.loading}
               parametersPanel={parametersPanel}
-              performanceRows={combinedHierarchicalRows}
+              performanceRows={sortedPortfolioRows}
               mobilePerformanceRows={mobilePerformanceRows}
               showFlatSecurities={showFlatSecurities}
               securitiesRows={flatAssetRows}

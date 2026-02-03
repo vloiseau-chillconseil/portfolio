@@ -1055,7 +1055,7 @@ public class PortfolioGraphQLQueries
                         .toList();
 
         PerformanceIndex portfolioIndex = PerformanceIndex
-                        .forPortfolio(client, converter, source, interval, new ArrayList<>());
+                        .forPortfolioPlusAccount(client, converter, source, interval, new ArrayList<>());
         double portfolioPercent = portfolioIndex.getFinalAccumulatedPercentage() * 100d;
         long portfolioStartValue = firstNonZero(portfolioIndex.getTotals());
         String referenceAccountId = source.getReferenceAccount() != null
@@ -1064,6 +1064,15 @@ public class PortfolioGraphQLQueries
         String referenceAccountName = source.getReferenceAccount() != null
                         ? unwrapAccount(source.getReferenceAccount()).getName()
                         : null;
+
+        Money accountStart = startSnapshot.getAccounts().stream()
+                        .map(AccountSnapshot::getFunds)
+                        .reduce(Money.of(termCurrency, 0), Money::add);
+        Money accountEnd = endSnapshot.getAccounts().stream()
+                        .map(AccountSnapshot::getFunds)
+                        .reduce(Money.of(termCurrency, 0), Money::add);
+        Money accountDelta = accountEnd.subtract(accountStart);
+        portfolioDelta.add(accountDelta);
 
         portfolios.add(new PerformancePortfolioInfo(source.getUUID(), source.getName(), referenceAccountId,
                         referenceAccountName, new MoneyInfo(Money.of(termCurrency, portfolioStartValue)),
