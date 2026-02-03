@@ -209,7 +209,8 @@ public class PortfolioGraphQLQueries
         Map<String, String> accountPortfolioMap = filteredClient.getPortfolios().stream()
                         .map(this::unwrapPortfolio)
                         .filter(p -> p.getReferenceAccount() != null)
-                        .collect(Collectors.toMap(p -> unwrapAccount(p.getReferenceAccount()).getUUID(), Portfolio::getUUID));
+                        .collect(Collectors.toMap(p -> unwrapAccount(p.getReferenceAccount()).getUUID(),
+                                        Portfolio::getUUID, (existing, replacement) -> existing));
 
         List<PerformanceReferenceAccountInfo> referenceAccounts = toReferenceAccountEntries(filteredClient, converter,
                         start, end, taxonomyAggregations, accountPortfolioMap);
