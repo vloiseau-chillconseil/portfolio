@@ -822,7 +822,8 @@ public class PortfolioGraphQLQueries
         private final List<PerformanceTaxonomyAssignmentInfo> taxonomyAssignments;
 
         public PerformanceReferenceAccountInfo(String accountId, String accountName, MoneyInfo startValue,
-                        MoneyInfo delta, double deltaPercent, List<PerformanceTaxonomyAssignmentInfo> taxonomyAssignments)
+                        MoneyInfo delta, double deltaPercent,
+                        List<PerformanceTaxonomyAssignmentInfo> taxonomyAssignments)
         {
             this.accountId = accountId;
             this.accountName = accountName;
