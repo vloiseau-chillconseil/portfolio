@@ -1647,6 +1647,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
         </Card>
       ) : (
         <Card>
+          {isMobileLayout ? parametersPanel : null}
           <Typography.Text type="secondary">
             Renseignez une plage de date et un client filter pour afficher les
             données.
