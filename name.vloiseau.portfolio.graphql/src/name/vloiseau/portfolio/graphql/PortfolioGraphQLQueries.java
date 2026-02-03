@@ -2,6 +2,7 @@ package name.vloiseau.portfolio.graphql;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -1145,24 +1146,30 @@ public class PortfolioGraphQLQueries
             Money delta;
             double percent;
             Money taxonomyStart;
+            Money displayStart;
 
             if (linkedPortfolioId != null)
             {
                 delta = Money.of(converter.getTermCurrency(), 0);
                 percent = 0d;
                 taxonomyStart = endValue;
+                displayStart = endValue;
             }
             else
             {
-                delta = endValue.subtract(startValue);
-                percent = startValue.getAmount() == 0 ? 0d : (delta.getAmount() * 100d) / startValue.getAmount();
-                taxonomyStart = startValue;
+                Client pseudoClient = new PortfolioClientFilter(Collections.emptyList(), Collections.singletonList(unwrapped))
+                                .filter(client);
+                ClientPerformanceSnapshot accountPerformance = new ClientPerformanceSnapshot(pseudoClient, converter,
+                                startDate, endDate);
+                delta = accountPerformance.getAbsoluteDelta();
+                taxonomyStart = accountPerformance.getValue(ClientPerformanceSnapshot.CategoryType.INITIAL_VALUE);
+                percent = taxonomyStart.getAmount() == 0 ? 0d : (delta.getAmount() * 100d) / taxonomyStart.getAmount();
+                displayStart = taxonomyStart;
             }
 
             List<PerformanceTaxonomyAssignmentInfo> assignments = toTaxonomyAssignments(unwrapped, taxonomyStart, delta,
                             taxonomyAggregations);
 
-            Money displayStart = linkedPortfolioId != null ? endValue : startValue;
             entries.add(new PerformanceReferenceAccountInfo(unwrapped.getUUID(), unwrapped.getName(),
                             new MoneyInfo(displayStart), new MoneyInfo(delta), percent, assignments, linkedPortfolioId));
         }
