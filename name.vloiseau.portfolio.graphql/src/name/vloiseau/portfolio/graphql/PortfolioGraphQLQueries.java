@@ -1126,14 +1126,14 @@ public class PortfolioGraphQLQueries
                             Money.of(converter.getTermCurrency(), 0));
             Money endValue = endValues.getOrDefault(unwrapped.getUUID(),
                             Money.of(converter.getTermCurrency(), 0));
-            Money delta = endValue.subtract(startValue);
-            double percent = startValue.getAmount() == 0 ? 0d : (delta.getAmount() * 100d) / startValue.getAmount();
+            Money delta = Money.of(converter.getTermCurrency(), 0);
+            double percent = 0d;
 
-            List<PerformanceTaxonomyAssignmentInfo> assignments = toTaxonomyAssignments(unwrapped, startValue, delta,
+            List<PerformanceTaxonomyAssignmentInfo> assignments = toTaxonomyAssignments(unwrapped, endValue, delta,
                             taxonomyAggregations);
 
             entries.add(new PerformanceReferenceAccountInfo(unwrapped.getUUID(), unwrapped.getName(),
-                            new MoneyInfo(startValue), new MoneyInfo(delta), percent, assignments));
+                            new MoneyInfo(endValue), new MoneyInfo(delta), percent, assignments));
         }
 
         return entries;
