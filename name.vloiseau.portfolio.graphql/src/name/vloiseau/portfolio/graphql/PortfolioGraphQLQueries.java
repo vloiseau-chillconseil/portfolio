@@ -1172,23 +1172,16 @@ public class PortfolioGraphQLQueries
     private PerformanceTotalInfo toTotalPerformanceInfo(Client client, CurrencyConverterImpl converter,
                     LocalDate startDate, LocalDate endDate, List<PerformanceReferenceAccountInfo> referenceAccounts)
     {
-        ClientSnapshot startSnapshot = ClientSnapshot.create(client, converter, startDate);
-        ClientSnapshot endSnapshot = ClientSnapshot.create(client, converter, endDate);
+        ClientPerformanceSnapshot clientPerformance = new ClientPerformanceSnapshot(client, converter, startDate,
+                        endDate);
         var interval = Interval.of(startDate, endDate);
-        SecurityPerformanceSnapshot performance = SecurityPerformanceSnapshot.create(client, converter, interval,
-                        startSnapshot, endSnapshot);
-
-        var termCurrency = converter.getTermCurrency();
-        var totalDelta = MutableMoney.of(termCurrency);
-
-        performance.getRecords().forEach(record -> totalDelta.add(record.getDelta()));
-
         PerformanceIndex totalIndex = PerformanceIndex.forClient(client, converter, interval, new ArrayList<>());
         double totalPercent = totalIndex.getFinalAccumulatedPercentage() * 100d;
-        long totalStartValue = firstNonZero(totalIndex.getTotals());
 
-        return new PerformanceTotalInfo(new MoneyInfo(Money.of(termCurrency, totalStartValue)),
-                        new MoneyInfo(totalDelta.toMoney()), totalPercent);
+        Money totalDelta = clientPerformance.getAbsoluteDelta();
+        Money startAssets = clientPerformance.getValue(ClientPerformanceSnapshot.CategoryType.INITIAL_VALUE);
+
+        return new PerformanceTotalInfo(new MoneyInfo(startAssets), new MoneyInfo(totalDelta), totalPercent);
     }
 
     private PerformanceTaxonomyInfo toPerformanceTaxonomyInfo(Taxonomy taxonomy, TaxonomyAggregation aggregation)
