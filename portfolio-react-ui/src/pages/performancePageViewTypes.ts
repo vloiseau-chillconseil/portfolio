@@ -8,7 +8,8 @@ export type PerformanceRow = {
   startCurrency: string | null;
   portfolioId: string | null;
   securityId: string | null;
-  rowType: "portfolio" | "security" | "classification";
+  referenceAccountId?: string | null;
+  rowType: "portfolio" | "security" | "classification" | "referenceAccount";
   children?: PerformanceRow[];
   taxonomyAssignments?: Array<{
     taxonomyId: string | null;

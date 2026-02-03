@@ -48,6 +48,15 @@ type PerformancePortfolioInfo {
   startValue: MoneyInfo
 }
 
+type PerformanceReferenceAccountInfo {
+  accountId: String
+  accountName: String
+  delta: MoneyInfo
+  deltaPercent: Float!
+  startValue: MoneyInfo
+  taxonomyAssignments: [PerformanceTaxonomyAssignmentInfo]
+}
+
 type PerformanceSecurityInfo {
   delta: MoneyInfo
   deltaPercent: Float!
@@ -90,13 +99,14 @@ type PerformanceTaxonomyInfo {
 type PortfolioSecurityPerformanceResult {
   portfolios: [PerformancePortfolioInfo]
   securities: [PerformanceSecurityInfo]
+  referenceAccounts: [PerformanceReferenceAccountInfo]
   taxonomies: [PerformanceTaxonomyInfo]
   total: PerformanceTotalInfo
 }
 
 """Query root"""
 type Query {
-  clientFilterAccumulatedDelta(filterId: String, portfolioId: String, clientId: String, endDate: String, securityId: String, startDate: String): [DeltaPoint]
+  clientFilterAccumulatedDelta(filterId: String, portfolioId: String, clientId: String, endDate: String, securityId: String, referenceAccountId: String, startDate: String): [DeltaPoint]
   clients: [ClientInfo]
   clientFilterDelta(filterId: String, clientId: String, endDate: String, startDate: String): MoneyInfo
   portfolioSecurityPerformance(filterId: String, clientId: String, endDate: String, startDate: String): PortfolioSecurityPerformanceResult

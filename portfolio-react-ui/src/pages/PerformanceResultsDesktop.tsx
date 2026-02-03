@@ -1,5 +1,6 @@
-import { Alert, Select, Space, Spin, Table, Typography } from "antd";
+import { Alert, Button, Select, Space, Spin, Table, Typography } from "antd";
 import type { TableProps } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
 import type {
@@ -61,6 +62,72 @@ const PerformanceResultsDesktop = ({
   formatAmount,
   formatPercent,
 }: PerformanceResultsDesktopProps) => {
+  const handleExportCsv = () => {
+    if (!tableRows.length) return;
+
+    const collectLeaves = (rows: PerformanceRow[], parents: string[] = []) =>
+      rows.flatMap((row) => {
+        const nextParents = parents.concat(row.name ?? "-");
+        if (row.children?.length) {
+          return collectLeaves(row.children, nextParents);
+        }
+        return [{ record: row, ancestors: parents }];
+      });
+
+    const flattened = collectLeaves(tableRows);
+    if (!flattened.length) return;
+
+    const maxDepth = flattened.reduce((depth, entry) =>
+      Math.max(depth, entry.ancestors.length), 0);
+
+    const hierarchyHeaders = Array.from({ length: maxDepth }, (_value, index) =>
+      `Niveau ${index + 1}`
+    );
+    const header = [
+      ...hierarchyHeaders,
+      "Nom",
+      "Type",
+      "Valeur de départ",
+      "Devise départ",
+      "Performance €",
+      "Devise performance",
+      "Performance %",
+    ];
+
+    const body = flattened.map(({ record, ancestors }) => {
+      const hierarchyCells = hierarchyHeaders.map((_value, index) => ancestors[index] ?? "");
+      const cells = [
+        ...hierarchyCells,
+        record.name ?? "",
+        record.rowType ?? "",
+        record.startAmount ?? "",
+        record.startCurrency ?? "",
+        record.deltaAmount ?? "",
+        record.deltaCurrency ?? "",
+        record.deltaPercent ?? "",
+      ];
+      return cells
+        .map((cell) => {
+          if (cell === null || cell === undefined) return "";
+          const text = String(cell);
+          return text.includes(";") || text.includes("\"")
+            ? `"${text.replace(/"/g, '""')}"`
+            : text;
+        })
+        .join(";");
+    });
+    const csvContent = [header.join(";"), ...body].join("\n");
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "performance.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Space direction="vertical" size="large" className="page-stack">
       {deltaLoading ? (
@@ -126,12 +193,21 @@ const PerformanceResultsDesktop = ({
                 Détail des performances du {zoomRange?.startDate} au{" "}
                 {zoomRange?.endDate}
               </Typography.Text>
-              <Select
-                value={groupingMode}
-                options={groupingOptions}
-                onChange={onGroupingModeChange}
-                style={{ width: 320 }}
-              />
+              <Space wrap>
+                <Select
+                  value={groupingMode}
+                  options={groupingOptions}
+                  onChange={onGroupingModeChange}
+                  style={{ width: 320 }}
+                />
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={handleExportCsv}
+                  disabled={!tableRows.length}
+                >
+                  Exporter en CSV
+                </Button>
+              </Space>
               <div className="performance-table-desktop">
                 <Table
                   rowSelection={{

@@ -89,6 +89,7 @@ const CLIENT_FILTER_ACCUMULATED_QUERY = gql`
     $filterId: String
     $portfolioId: String
     $securityId: String
+    $referenceAccountId: String
     $startDate: String
     $endDate: String
   ) {
@@ -97,6 +98,7 @@ const CLIENT_FILTER_ACCUMULATED_QUERY = gql`
       filterId: $filterId
       portfolioId: $portfolioId
       securityId: $securityId
+      referenceAccountId: $referenceAccountId
       startDate: $startDate
       endDate: $endDate
     ) {
@@ -142,6 +144,25 @@ const PORTFOLIO_SECURITY_PERFORMANCE_QUERY = gql`
         portfolioId
         securityId
         name
+        startValue {
+          amount
+          currencyCode
+        }
+        delta {
+          amount
+          currencyCode
+        }
+        deltaPercent
+        taxonomyAssignments {
+          taxonomyId
+          taxonomyName
+          classificationId
+          classificationName
+        }
+      }
+      referenceAccounts {
+        accountId
+        accountName
         startValue {
           amount
           currencyCode
@@ -224,6 +245,23 @@ type PortfolioPerformanceResult = {
           | null;
       }>
     | null;
+  referenceAccounts:
+    | Array<{
+        accountId: string | null;
+        accountName: string | null;
+        startValue: MoneyValue;
+        delta: MoneyValue;
+        deltaPercent: number | null;
+        taxonomyAssignments:
+          | Array<{
+              taxonomyId: string | null;
+              taxonomyName: string | null;
+              classificationId: string | null;
+              classificationName: string | null;
+            }>
+          | null;
+      }>
+    | null;
   taxonomies:
     | Array<{
         taxonomyId: string | null;
@@ -258,14 +296,18 @@ type TaxonomyEntry = NonNullable<
 type TaxonomyClassificationEntry = NonNullable<
   NonNullable<TaxonomyEntry["classifications"]>[number]
 >;
-type SecurityEntry = NonNullable<
-  NonNullable<PortfolioPerformanceResult["securities"]>[number]
->;
+type TaxonomyAssetEntry =
+  | (NonNullable<NonNullable<PortfolioPerformanceResult["securities"]>[number]> & {
+      rowType: "security";
+    })
+  | (NonNullable<NonNullable<PortfolioPerformanceResult["referenceAccounts"]>[number]> & {
+      rowType: "referenceAccount";
+    });
 
 const buildTaxonomyGroupingRows = (
   taxonomyId: string,
   taxonomy: TaxonomyEntry,
-  securities: SecurityEntry[]
+  entries: TaxonomyAssetEntry[]
 ): PerformanceRow[] => {
   const classifications = taxonomy.classifications?.filter(isNonNullable) ?? [];
   if (!classifications.length) return [];
@@ -289,31 +331,39 @@ const buildTaxonomyGroupingRows = (
     childrenByParent.get(parentKey)!.push(classification);
   });
 
-  const securitiesByClassification = new Map<string, PerformanceRow[]>();
-  securities.forEach((security, securityIndex) => {
-    security.taxonomyAssignments?.forEach((assignment, assignmentIndex) => {
+  const assetsByClassification = new Map<string, PerformanceRow[]>();
+  entries.forEach((entry, entryIndex) => {
+    entry.taxonomyAssignments?.forEach((assignment, assignmentIndex) => {
       if (assignment?.taxonomyId !== taxonomy.taxonomyId) return;
       const classificationId = assignment.classificationId;
       if (!classificationId) return;
-      const list = securitiesByClassification.get(classificationId) ?? [];
+      const list = assetsByClassification.get(classificationId) ?? [];
       list.push({
         key:
-          security.id ??
-          `${security.securityId ?? `security-${securityIndex}`}-classification-${classificationId}-${assignmentIndex}`,
-        name: security.name ?? "-",
-        deltaAmount: security.delta?.amount ?? null,
-        deltaCurrency: security.delta?.currencyCode ?? null,
-        deltaPercent: security.deltaPercent ?? null,
-        startAmount: security.startValue?.amount ?? null,
-        startCurrency: security.startValue?.currencyCode ?? null,
-        portfolioId: security.portfolioId ?? null,
-        securityId: security.securityId ?? null,
-        rowType: "security",
-        taxonomyAssignments: security.taxonomyAssignments ?? undefined,
+          entry.rowType === "security"
+            ? entry.id ??
+              `${entry.securityId ?? `security-${entryIndex}`}-classification-${classificationId}-${assignmentIndex}`
+            : ("accountId" in entry && entry.accountId
+                ? entry.accountId
+                : `account-${entryIndex}-classification-${classificationId}-${assignmentIndex}`),
+        name: entry.name ?? "-",
+        deltaAmount: entry.delta?.amount ?? null,
+        deltaCurrency: entry.delta?.currencyCode ?? null,
+        deltaPercent: entry.deltaPercent ?? null,
+        startAmount: entry.startValue?.amount ?? null,
+        startCurrency: entry.startValue?.currencyCode ?? null,
+        portfolioId: entry.rowType === "security" ? entry.portfolioId ?? null : null,
+        securityId: entry.rowType === "security" ? entry.securityId ?? null : null,
+        referenceAccountId:
+          entry.rowType === "referenceAccount" && "accountId" in entry
+            ? entry.accountId ?? null
+            : null,
+        rowType: entry.rowType === "security" ? "security" : "referenceAccount",
+        taxonomyAssignments: entry.taxonomyAssignments ?? undefined,
         taxonomyId: assignment.taxonomyId ?? null,
         classificationId: assignment.classificationId ?? null,
       });
-      securitiesByClassification.set(classificationId, list);
+      assetsByClassification.set(classificationId, list);
     });
   });
 
@@ -331,8 +381,8 @@ const buildTaxonomyGroupingRows = (
     const childRows = childClassifications.map((child) =>
       buildRowForClassification(child)
     );
-    const securityChildren =
-      securitiesByClassification.get(classification.classificationId ?? "") ?? [];
+      const securityChildren =
+        assetsByClassification.get(classification.classificationId ?? "") ?? [];
     const children = [...childRows, ...securityChildren];
 
     return {
@@ -882,10 +932,14 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     })} %`;
   };
 
+  const performanceResult = portfolioPerformanceQuery.data?.portfolioSecurityPerformance;
+  const portfolioEntries = performanceResult?.portfolios?.filter(isNonNullable) ?? [];
+  const securityEntries = performanceResult?.securities?.filter(isNonNullable) ?? [];
+  const referenceAccountEntries = performanceResult?.referenceAccounts?.filter(isNonNullable) ?? [];
+
   const portfolioRows = useMemo<PerformanceRow[]>(() => {
-    const result = portfolioPerformanceQuery.data?.portfolioSecurityPerformance;
-    const portfolios = result?.portfolios?.filter(isNonNullable) ?? [];
-    const securities = result?.securities?.filter(isNonNullable) ?? [];
+    const portfolios = portfolioEntries;
+    const securities = securityEntries;
 
     return portfolios.map((portfolio, portfolioIndex) => {
       const portfolioKey =
@@ -926,7 +980,24 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
         children: children.length ? children : undefined,
       };
     });
-  }, [portfolioPerformanceQuery.data]);
+  }, [portfolioEntries, securityEntries]);
+
+  const referenceAccountRows = useMemo<PerformanceRow[]>(() => {
+    return referenceAccountEntries.map((account, accountIndex) => ({
+      key: account.accountId ?? `reference-account-${accountIndex}`,
+      name: account.accountName ?? "-",
+      deltaAmount: account.delta?.amount ?? null,
+      deltaCurrency: account.delta?.currencyCode ?? null,
+      deltaPercent: account.deltaPercent ?? null,
+      startAmount: account.startValue?.amount ?? null,
+      startCurrency: account.startValue?.currencyCode ?? null,
+      portfolioId: null,
+      securityId: null,
+      referenceAccountId: account.accountId ?? null,
+      rowType: "referenceAccount",
+      taxonomyAssignments: account.taxonomyAssignments ?? undefined,
+    }));
+  }, [referenceAccountEntries]);
 
   const compareRows = useCallback(
     (a: PerformanceRow, b: PerformanceRow) => {
@@ -961,6 +1032,11 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     [portfolioRows, sortRowsWithChildren]
   );
 
+  const combinedHierarchicalRows = useMemo(
+    () => [...sortedPortfolioRows, ...referenceAccountRows],
+    [referenceAccountRows, sortedPortfolioRows]
+  );
+
   const securitiesOnlyRows = useMemo(() => {
     const rows = sortedPortfolioRows.flatMap((row) =>
       row.children?.length ? row.children.map((child) => ({ ...child })) : []
@@ -969,51 +1045,57 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     return rows;
   }, [compareRows, sortedPortfolioRows]);
 
-  const mobilePerformanceRows = useMemo(() => sortedPortfolioRows, [sortedPortfolioRows]);
+  const mobilePerformanceRows = useMemo(() => combinedHierarchicalRows, [combinedHierarchicalRows]);
 
   const flatPerformanceRows = useMemo(() => {
     const flatten = (rows: PerformanceRow[]) =>
       rows.flatMap((row) => [row, ...(row.children ? flatten(row.children) : [])]);
-    return flatten(sortedPortfolioRows);
-  }, [sortedPortfolioRows]);
+    return flatten(combinedHierarchicalRows);
+  }, [combinedHierarchicalRows]);
+
+  const flatAssetRows = useMemo(() => {
+    const rows = [...securitiesOnlyRows, ...referenceAccountRows.map((row) => ({ ...row }))];
+    rows.sort(compareRows);
+    return rows;
+  }, [compareRows, referenceAccountRows, securitiesOnlyRows]);
 
   const taxonomyList = useMemo(
-    () =>
-      portfolioPerformanceQuery.data?.portfolioSecurityPerformance?.taxonomies?.filter(
-        isNonNullable
-      ) ?? [],
-    [portfolioPerformanceQuery.data]
+    () => performanceResult?.taxonomies?.filter(isNonNullable) ?? [],
+    [performanceResult]
   );
 
   const taxonomyRowsById = useMemo(() => {
     const result: Record<string, PerformanceRow[]> = {};
-    const data = portfolioPerformanceQuery.data?.portfolioSecurityPerformance;
-    if (!data) return result;
-    const securities = data.securities?.filter(isNonNullable) ?? [];
+    if (!performanceResult) return result;
+
+    const assets: TaxonomyAssetEntry[] = [
+      ...securityEntries.map((entry) => ({ ...entry, rowType: "security" as const })),
+      ...referenceAccountEntries.map((entry) => ({ ...entry, rowType: "referenceAccount" as const })),
+    ];
 
     taxonomyList.forEach((taxonomy, index) => {
       const taxonomyKey = taxonomy.taxonomyId ?? `taxonomy-${index}`;
-      const rows = buildTaxonomyGroupingRows(taxonomyKey, taxonomy, securities);
+      const rows = buildTaxonomyGroupingRows(taxonomyKey, taxonomy, assets);
       if (rows.length) {
         result[taxonomy.taxonomyId ?? taxonomyKey] = rows;
       }
     });
 
     return result;
-  }, [portfolioPerformanceQuery.data, taxonomyList]);
+  }, [performanceResult, referenceAccountEntries, securityEntries, taxonomyList]);
 
   const desktopTableRows = useMemo(() => {
     if (groupingMode === "flat") {
-      return securitiesOnlyRows;
+      return flatAssetRows;
     }
     if (groupingMode === "portfolio") {
-      return sortedPortfolioRows;
+      return combinedHierarchicalRows;
     }
     if (selectedTaxonomyId) {
       return taxonomyRowsById[selectedTaxonomyId] ?? [];
     }
-    return sortedPortfolioRows;
-  }, [groupingMode, securitiesOnlyRows, selectedTaxonomyId, sortedPortfolioRows, taxonomyRowsById]);
+    return combinedHierarchicalRows;
+  }, [combinedHierarchicalRows, flatAssetRows, groupingMode, selectedTaxonomyId, taxonomyRowsById]);
 
   const groupingOptions = useMemo(() => {
     const options: Array<{ value: string; label: string }> = [
@@ -1117,14 +1199,15 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
         selectedRows.map(async (row) => {
           const { data } = await apolloClient.query({
             query: CLIENT_FILTER_ACCUMULATED_QUERY,
-            variables: {
-              clientId: currentClient?.id ?? null,
-              filterId: selectedFilterId,
-              startDate: formattedDates.startDate,
-              endDate: formattedDates.endDate,
-              portfolioId: row.portfolioId,
-              securityId: row.securityId,
-            },
+              variables: {
+                clientId: currentClient?.id ?? null,
+                filterId: selectedFilterId,
+                startDate: formattedDates.startDate,
+                endDate: formattedDates.endDate,
+                portfolioId: row.portfolioId,
+                securityId: row.securityId,
+                referenceAccountId: row.referenceAccountId ?? null,
+              },
             fetchPolicy: "network-only",
           });
 
@@ -1486,10 +1569,10 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
               portfolioError={portfolioPerformanceQuery.error?.message ?? null}
               portfolioLoading={portfolioPerformanceQuery.loading}
               parametersPanel={parametersPanel}
-              performanceRows={sortedPortfolioRows}
+              performanceRows={combinedHierarchicalRows}
               mobilePerformanceRows={mobilePerformanceRows}
               showFlatSecurities={showFlatSecurities}
-              securitiesRows={securitiesOnlyRows}
+              securitiesRows={flatAssetRows}
               listSortDirection={listSortDirection}
               listPerfDirection={listPerfDirection}
               onToggleListSortDirection={() => {
@@ -1527,13 +1610,13 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
             selectionError={selectionError}
             portfolioError={portfolioPerformanceQuery.error?.message ?? null}
             portfolioLoading={portfolioPerformanceQuery.loading}
-              tableRows={desktopTableRows}
-              hasPerformanceData={hasPerformanceData}
-              totalSummary={totalSummary}
-              performanceTotals={performanceTotals}
-              zoomRange={zoomRange}
-              selectedRowKeys={selectedRowKeys}
-              sortState={sortState}
+            tableRows={desktopTableRows}
+            hasPerformanceData={hasPerformanceData}
+            totalSummary={totalSummary}
+            performanceTotals={performanceTotals}
+            zoomRange={zoomRange}
+            selectedRowKeys={selectedRowKeys}
+            sortState={sortState}
             groupingMode={groupingMode}
             groupingOptions={groupingOptions}
             onGroupingModeChange={(value) =>
