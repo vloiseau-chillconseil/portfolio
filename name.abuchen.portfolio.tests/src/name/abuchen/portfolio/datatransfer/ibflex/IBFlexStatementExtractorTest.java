@@ -44,7 +44,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import name.abuchen.portfolio.Messages;
