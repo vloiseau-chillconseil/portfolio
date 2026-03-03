@@ -526,7 +526,7 @@ public class SecurityListView extends AbstractFinanceView
                         return true;
                 }
 
-                return false;
+                return matchesAttributeValues(security);
             }
         });
 
@@ -548,6 +548,26 @@ public class SecurityListView extends AbstractFinanceView
         setSecurityTableInput();
 
         return container;
+    }
+
+    private boolean matchesAttributeValues(Security security)
+    {
+        var visibleAttributeTypes = securities.getVisibleAttributeTypes();
+        if (visibleAttributeTypes.isEmpty())
+            return false;
+
+        for (var attributeType : visibleAttributeTypes)
+        {
+            Object value = security.getAttributes().get(attributeType);
+            if (value == null)
+                continue;
+
+            String text = attributeType.getConverter().toString(value);
+            if (text != null && !text.isBlank() && filterPattern.matcher(text).matches())
+                return true;
+        }
+
+        return false;
     }
 
     private void setSecurityTableInput()

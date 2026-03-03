@@ -44,6 +44,7 @@ import org.eclipse.swt.widgets.Shell;
 import com.google.common.collect.Streams;
 
 import name.abuchen.portfolio.model.AccountTransaction;
+import name.abuchen.portfolio.model.AttributeType;
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Classification.Assignment;
 import name.abuchen.portfolio.model.Client;
@@ -774,6 +775,20 @@ public final class SecuritiesTable implements ModificationListener
     public ShowHideColumnHelper getColumnHelper()
     {
         return support;
+    }
+
+    public List<AttributeType> getVisibleAttributeTypes()
+    {
+        List<AttributeType> visibleAttributes = new ArrayList<>();
+
+        for (var column : securities.getTable().getColumns())
+        {
+            Object data = column.getData(Column.class.getName());
+            if (data instanceof AttributeColumn attributeColumn)
+                visibleAttributes.add(attributeColumn.getAttributeType());
+        }
+
+        return visibleAttributes;
     }
 
     //

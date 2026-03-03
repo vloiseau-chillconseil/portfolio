@@ -44,6 +44,8 @@ import name.abuchen.portfolio.util.Pair;
 
 public class AttributeColumn extends Column
 {
+    private final AttributeType attribute;
+
     private static final class AttributeComparator implements Comparator<Object>
     {
         private final AttributeType attribute;
@@ -362,6 +364,8 @@ public class AttributeColumn extends Column
         super(ID + attribute.getId(), attribute.getColumnLabel(), // $NON-NLS-1$
                         attribute.isNumber() ? SWT.RIGHT : SWT.LEFT, 80);
 
+        this.attribute = attribute;
+
         setMenuLabel(attribute.getName());
         setGroupLabel(Messages.GroupLabelAttributes);
         setSorter(ColumnViewerSorter.create(new AttributeComparator(attribute)));
@@ -398,6 +402,11 @@ public class AttributeColumn extends Column
             new AttributeEditingSupport(attribute).attachTo(this);
         }
 
+    }
+
+    public AttributeType getAttributeType()
+    {
+        return attribute;
     }
 
     public static Stream<Column> createFor(Client client, Class<? extends Attributable> target)
