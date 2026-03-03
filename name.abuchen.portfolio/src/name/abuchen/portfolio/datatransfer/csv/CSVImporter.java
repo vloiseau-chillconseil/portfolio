@@ -57,6 +57,7 @@ import name.abuchen.portfolio.Messages;
 import name.abuchen.portfolio.PortfolioLog;
 import name.abuchen.portfolio.datatransfer.Extractor.Item;
 import name.abuchen.portfolio.model.AccountTransaction;
+import name.abuchen.portfolio.model.AttributeType;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.util.Isin;
@@ -809,6 +810,22 @@ public final class CSVImporter
             {
                 return null;
             }
+        }
+    }
+
+    public static class AttributeField extends CSVImporter.Field
+    {
+        private final AttributeType attributeType;
+
+        /* package */ AttributeField(String code, AttributeType attributeType, String... names)
+        {
+            super(code, names);
+            this.attributeType = attributeType;
+        }
+
+        public AttributeType getAttributeType()
+        {
+            return attributeType;
         }
     }
 
