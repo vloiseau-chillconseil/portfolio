@@ -72,12 +72,6 @@ import name.abuchen.portfolio.online.impl.YahooFinanceQuoteFeed;
 @SuppressWarnings("nls")
 public class IBFlexStatementExtractorTest
 {
-    @BeforeClass
-    public static void increaseXmlAttributeLimit()
-    {
-        System.setProperty("jdk.xml.elementAttributeLimit", "1000"); //$NON-NLS-1$ //$NON-NLS-2$
-    }
-
     private Extractor.InputFile createTempFile(InputStream input) throws IOException
     {
         File tempFile = Files.createTempFile("IBFlexStatementExtractorTest", null).toFile();
