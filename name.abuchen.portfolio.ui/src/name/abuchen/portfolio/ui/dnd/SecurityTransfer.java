@@ -5,6 +5,7 @@ import java.util.List;
 import org.eclipse.swt.dnd.ByteArrayTransfer;
 import org.eclipse.swt.dnd.TransferData;
 
+import name.abuchen.portfolio.model.AttributeType;
 import name.abuchen.portfolio.model.Security;
 
 public class SecurityTransfer extends ByteArrayTransfer
@@ -17,6 +18,7 @@ public class SecurityTransfer extends ByteArrayTransfer
     private static final SecurityTransfer INSTANCE = new SecurityTransfer();
 
     private List<Security> securities;
+    private List<AttributeType> attributeTypes;
 
     protected SecurityTransfer()
     {
@@ -35,6 +37,16 @@ public class SecurityTransfer extends ByteArrayTransfer
     public void setSecurities(List<Security> securities)
     {
         this.securities = securities;
+    }
+
+    public List<AttributeType> getAttributeTypes()
+    {
+        return attributeTypes;
+    }
+
+    public void setAttributeTypes(List<AttributeType> attributeTypes)
+    {
+        this.attributeTypes = attributeTypes;
     }
 
     @Override

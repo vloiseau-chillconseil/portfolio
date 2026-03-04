@@ -859,7 +859,8 @@ public class SecuritiesPerformanceView extends AbstractFinanceView implements Re
 
         records.addDragSupport(DND.DROP_MOVE, //
                         new Transfer[] { SecurityTransfer.getTransfer() }, //
-                        new SecurityDragListener(records));
+                        new SecurityDragListener(records, () -> getClient().getSettings().getAttributeTypes()
+                                        .filter(a -> a.supports(Security.class)).toList()));
 
         hookContextMenu(records.getTable(), this::fillContextMenu);
         hookKeyListener();

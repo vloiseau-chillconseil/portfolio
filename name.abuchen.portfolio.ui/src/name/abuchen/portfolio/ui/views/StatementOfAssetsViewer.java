@@ -622,7 +622,8 @@ public class StatementOfAssetsViewer
 
         assets.addDragSupport(DND.DROP_MOVE, //
                         new Transfer[] { SecurityTransfer.getTransfer() }, //
-                        new SecurityDragListener(assets));
+                        new SecurityDragListener(assets, () -> client.getSettings().getAttributeTypes()
+                                        .filter(a -> a.supports(Security.class)).toList()));
 
         // make sure to apply the styles (including font information to the
         // table) before creating the bold font. Otherwise the font does not

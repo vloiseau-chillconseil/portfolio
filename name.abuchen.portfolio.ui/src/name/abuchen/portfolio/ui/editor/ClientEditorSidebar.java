@@ -1,5 +1,6 @@
 package name.abuchen.portfolio.ui.editor;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -14,6 +15,7 @@ import org.eclipse.swt.events.ControlListener;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 
+import name.abuchen.portfolio.model.AttributeType;
 import name.abuchen.portfolio.model.Security;
 import name.abuchen.portfolio.model.Watchlist;
 import name.abuchen.portfolio.ui.Images;
@@ -133,6 +135,8 @@ import name.abuchen.portfolio.ui.views.SecurityListView;
                 if (securities == null)
                     return;
 
+                List<AttributeType> sourceAttributeTypes = SecurityTransfer.getTransfer().getAttributeTypes();
+
                 boolean isDirty = false;
 
                 for (Security security : securities)
@@ -141,7 +145,9 @@ import name.abuchen.portfolio.ui.views.SecurityListView;
                     // a deep copy to the client's securities list
                     if (!editor.getClient().getSecurities().contains(security))
                     {
+                        Security source = security;
                         security = security.deepCopy();
+                        copyAttributes(source, security, sourceAttributeTypes);
                         editor.getClient().addSecurity(security);
                         isDirty = true;
                     }
@@ -162,5 +168,31 @@ import name.abuchen.portfolio.ui.views.SecurityListView;
 
         sidebar.addDropSupport(item, DND.DROP_MOVE, new Transfer[] { SecurityTransfer.getTransfer() },
                         dropTargetListener);
+    }
+
+    private void copyAttributes(Security source, Security target, List<AttributeType> sourceAttributeTypes)
+    {
+        var sourceByName = new HashMap<String, Object>();
+
+        if (sourceAttributeTypes != null)
+        {
+            for (var attributeType : sourceAttributeTypes)
+            {
+                if (!attributeType.supports(Security.class))
+                    continue;
+
+                Object value = source.getAttributes().get(attributeType);
+                if (value != null)
+                    sourceByName.put(attributeType.getName(), value);
+            }
+        }
+
+        editor.getClient().getSettings().getAttributeTypes() //
+                        .filter(attributeType -> attributeType.supports(Security.class))
+                        .forEach(attributeType -> {
+                            Object value = sourceByName.get(attributeType.getName());
+                            if (value != null)
+                                target.getAttributes().put(attributeType, value);
+                        });
     }
 }

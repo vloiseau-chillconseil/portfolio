@@ -49,6 +49,7 @@ import com.google.common.base.Strings;
 
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Classification.Assignment;
+import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.InvestmentVehicle;
 import name.abuchen.portfolio.model.Named;
 import name.abuchen.portfolio.model.Security;
@@ -129,10 +130,12 @@ import name.abuchen.portfolio.util.TextUtil;
     private static class NodeDragListener extends DragSourceAdapter
     {
         private TreeViewer treeViewer;
+        private Client client;
 
-        public NodeDragListener(TreeViewer treeViewer)
+        public NodeDragListener(TreeViewer treeViewer, Client client)
         {
             this.treeViewer = treeViewer;
+            this.client = client;
         }
 
         @Override
@@ -151,10 +154,13 @@ import name.abuchen.portfolio.util.TextUtil;
                 List<Security> securities = new ArrayList<>();
                 securities.add(security);
                 SecurityTransfer.getTransfer().setSecurities(securities);
+                SecurityTransfer.getTransfer().setAttributeTypes(client.getSettings().getAttributeTypes()
+                                .filter(a -> a.supports(Security.class)).toList());
             }
             else
             {
                 SecurityTransfer.getTransfer().setSecurities(null);
+                SecurityTransfer.getTransfer().setAttributeTypes(null);
             }
 
             event.data = nodes;
@@ -406,7 +412,7 @@ import name.abuchen.portfolio.util.TextUtil;
 
         nodeViewer.addDragSupport(DND.DROP_MOVE | DND.DROP_COPY,
                         new Transfer[] { TaxonomyNodeTransfer.getTransfer(), SecurityTransfer.getTransfer() },
-                        new NodeDragListener(nodeViewer));
+                        new NodeDragListener(nodeViewer, getModel().getClient()));
         nodeViewer.addDropSupport(DND.DROP_MOVE | DND.DROP_COPY, new Transfer[] { TaxonomyNodeTransfer.getTransfer() },
                         new NodeDropListener(this));
 

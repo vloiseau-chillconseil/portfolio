@@ -180,7 +180,8 @@ public final class SecuritiesTable implements ModificationListener
 
         securities.addDragSupport(DND.DROP_MOVE, //
                         new Transfer[] { SecurityTransfer.getTransfer() }, //
-                        new SecurityDragListener(securities));
+                        new SecurityDragListener(securities, () -> getClient().getSettings().getAttributeTypes()
+                                        .filter(a -> a.supports(Security.class)).toList()));
 
         hookKeyListener();
 
