@@ -27,6 +27,8 @@ import org.eclipse.e4.ui.model.application.ui.MDirtyable;
 import org.eclipse.e4.ui.model.application.ui.basic.MPart;
 import org.eclipse.e4.ui.services.IServiceConstants;
 import org.eclipse.e4.ui.services.IStylingEngine;
+import org.eclipse.jface.action.IStatusLineManager;
+import org.eclipse.jface.action.StatusLineManager;
 import org.eclipse.jface.action.IMenuManager;
 import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.layout.GridDataFactory;
@@ -73,6 +75,7 @@ public class PortfolioPart implements ClientInputListener
     private PageBook book;
     private ClientEditorSidebar sidebar;
     private AbstractFinanceView view;
+    private StatusLineManager statusLineManager;
 
     private Control focus;
 
@@ -145,12 +148,18 @@ public class PortfolioPart implements ClientInputListener
     private void createContainerWithViews(Composite parent)
     {
         container = new Composite(parent, SWT.NONE);
-        container.setLayout(new FillLayout());
+        GridLayoutFactory.fillDefaults().spacing(0, 0).margins(0, 0).applyTo(container);
 
         Composite sash = new Composite(container, SWT.NONE);
+        GridDataFactory.fillDefaults().grab(true, true).applyTo(sash);
         SashLayout sashLayout = new SashLayout(sash, SWT.HORIZONTAL | SWT.BEGINNING);
         sashLayout.setTag(UIConstants.Tag.SIDEBAR);
         sash.setLayout(sashLayout);
+
+        statusLineManager = new StatusLineManager();
+        Control statusLine = statusLineManager.createControl(container);
+        GridDataFactory.fillDefaults().grab(true, false).applyTo(statusLine);
+        context.set(IStatusLineManager.class, statusLineManager);
 
         Composite navigationBar = new Composite(sash, SWT.NONE);
         navigationBar.setData(UIConstants.CSS.CLASS_NAME, "sidebar"); //$NON-NLS-1$
@@ -214,6 +223,12 @@ public class PortfolioPart implements ClientInputListener
         item.ifPresent(this::activateView);
 
         focus = book;
+    }
+
+    public void setStatusLineMessage(String message)
+    {
+        if (statusLineManager != null)
+            statusLineManager.setMessage(message);
     }
 
     private void addToNavigationMenu(IMenuManager menuManager, int depth, Stream<Item> items)

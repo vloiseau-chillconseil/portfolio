@@ -224,6 +224,7 @@ public abstract class AbstractFinanceView
 
     protected abstract Control createBody(Composite parent);
 
+
     private final Control createHeader(Composite parent)
     {
         Composite header = new Composite(parent, SWT.NONE);

@@ -3,7 +3,9 @@ package name.abuchen.portfolio.ui.views;
 import java.io.File;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
@@ -32,11 +34,13 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.FileDialog;
+import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.swt.widgets.Text;
 
 import name.abuchen.portfolio.events.ChangeEventConstants;
 import name.abuchen.portfolio.events.SecurityCreatedEvent;
 import name.abuchen.portfolio.model.Client;
+import name.abuchen.portfolio.model.AttributeType;
 import name.abuchen.portfolio.model.LimitPrice;
 import name.abuchen.portfolio.model.PortfolioTransaction;
 import name.abuchen.portfolio.model.Security;
@@ -335,6 +339,7 @@ public class SecurityListView extends AbstractFinanceView
 
                     setImage(filter.isEmpty() ? Images.FILTER_OFF : Images.FILTER_ON);
                     securities.refresh(false);
+                    updateStatusBar();
                 }
             };
             action.setChecked(filter.contains(predicate));
@@ -377,6 +382,7 @@ public class SecurityListView extends AbstractFinanceView
         {
             updateTitle(getDefaultTitle());
             securities.refresh(true);
+            updateStatusBar();
         }
     }
 
@@ -409,6 +415,7 @@ public class SecurityListView extends AbstractFinanceView
 
         setSecurityTableInput();
         securities.getTableViewer().setSelection(new StructuredSelection(event.getSecurity()), true);
+        updateStatusBar();
     }
 
     @Override
@@ -449,6 +456,8 @@ public class SecurityListView extends AbstractFinanceView
                         filterPattern = Pattern.compile(".*" + filterText + ".*", Pattern.CASE_INSENSITIVE | Pattern.DOTALL); //$NON-NLS-1$ //$NON-NLS-2$
                         securities.refresh(false);
                     }
+
+                    updateStatusBar();
                 });
 
                 return search;
@@ -491,7 +500,10 @@ public class SecurityListView extends AbstractFinanceView
 
         securities = new SecuritiesTable(container, this);
         updateTitle(getDefaultTitle());
-        securities.getColumnHelper().addListener(() -> updateTitle(getDefaultTitle()));
+        securities.getColumnHelper().addListener(() -> {
+            updateTitle(getDefaultTitle());
+            updateStatusBar();
+        });
         securities.getColumnHelper().setToolBarManager(getViewToolBarManager());
 
         securities.addSelectionChangedListener(event -> {
@@ -501,7 +513,10 @@ public class SecurityListView extends AbstractFinanceView
 
             selectionService.setSelection(selection.isEmpty() ? null : securitySelection);
             setInformationPaneInput(securitySelection);
+            updateStatusBar();
         });
+
+        securities.getTableViewer().getControl().addDisposeListener(e -> getPart().setStatusLineMessage("")); //$NON-NLS-1$
 
         securities.addFilter(new ViewerFilter()
         {
@@ -546,6 +561,7 @@ public class SecurityListView extends AbstractFinanceView
         });
 
         setSecurityTableInput();
+        updateStatusBar();
 
         return container;
     }
@@ -570,12 +586,117 @@ public class SecurityListView extends AbstractFinanceView
         return false;
     }
 
+    private void updateStatusBar()
+    {
+        if (securities == null)
+            return;
+
+        var table = securities.getTableViewer().getTable();
+        if (table.isDisposed())
+            return;
+
+        int totalCount = table.getItemCount();
+        var selection = securities.getTableViewer().getStructuredSelection();
+        int selectedCount = selection.size();
+
+        StringBuilder text = new StringBuilder();
+        text.append(Messages.LabelStatusSecurities).append(": ").append(totalCount); //$NON-NLS-1$
+        text.append(" (").append(Messages.LabelStatusSelected).append(": ").append(selectedCount).append(')'); //$NON-NLS-1$
+
+        var percentAttributes = getVisiblePercentAttributeTypes();
+        if (!percentAttributes.isEmpty())
+        {
+            var totals = computeAttributeSums(table.getItems(), percentAttributes);
+            var selectedTotals = computeAttributeSums(selection.toArray(), percentAttributes);
+
+            for (var attributeType : percentAttributes)
+            {
+                var total = totals.getOrDefault(attributeType, new AttributeSum());
+                var selected = selectedTotals.getOrDefault(attributeType, new AttributeSum());
+
+                text.append(" | ") //$NON-NLS-1$
+                                .append(attributeType.getColumnLabel()).append(": ") //$NON-NLS-1$
+                                .append(total.format(attributeType)).append(" (") //$NON-NLS-1$
+                                .append(Messages.LabelStatusSelected).append(": ") //$NON-NLS-1$
+                                .append(selected.format(attributeType)).append(')');
+            }
+        }
+
+        getPart().setStatusLineMessage(text.toString());
+    }
+
+    private List<AttributeType> getVisiblePercentAttributeTypes()
+    {
+        List<AttributeType> percentAttributes = new ArrayList<>();
+
+        for (var attributeType : securities.getVisibleAttributeTypes())
+        {
+            var converter = attributeType.getConverter();
+            if (converter instanceof AttributeType.PercentConverter
+                            || converter instanceof AttributeType.PercentPlainConverter)
+            {
+                percentAttributes.add(attributeType);
+            }
+        }
+
+        return percentAttributes;
+    }
+
+    private static class AttributeSum
+    {
+        private double total;
+        private int count;
+
+        void add(Object value)
+        {
+            if (value instanceof Number number)
+            {
+                total += number.doubleValue();
+                count++;
+            }
+        }
+
+        String format(AttributeType attributeType)
+        {
+            if (count == 0)
+                return "-"; //$NON-NLS-1$
+
+            return attributeType.getConverter().toString(total);
+        }
+    }
+
+    private Map<AttributeType, AttributeSum> computeAttributeSums(Object[] elements,
+                    List<AttributeType> attributeTypes)
+    {
+        Map<AttributeType, AttributeSum> totals = new HashMap<>();
+
+        for (Object element : elements)
+        {
+            Object data = element instanceof TableItem item ? item.getData() : element;
+            if (!(data instanceof Security security))
+                continue;
+
+            for (var attributeType : attributeTypes)
+            {
+                Object value = security.getAttributes().get(attributeType);
+                if (value == null)
+                    continue;
+
+                totals.computeIfAbsent(attributeType, type -> new AttributeSum()).add(value);
+            }
+        }
+
+        return totals;
+    }
+
     private void setSecurityTableInput()
     {
         if (watchlist != null)
             securities.setInput(watchlist);
         else
             securities.setInput(getClient().getSecurities());
+
+        updateStatusBar();
     }
 
     @Override

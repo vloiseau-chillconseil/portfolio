@@ -882,6 +882,8 @@ public class Messages extends NLS
     public static String LabelSearch;
     public static String LabelSearchForQuoteFeeds;
     public static String LabelSecurities;
+    public static String LabelStatusSecurities;
+    public static String LabelStatusSelected;
     public static String LabelSecurityCalendar;
     public static String LabelSecurityCalendarToolTip;
     public static String LabelSecurityLatestPrice;
