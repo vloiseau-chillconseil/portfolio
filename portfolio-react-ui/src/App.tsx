@@ -7,12 +7,14 @@ import {
   LineChartOutlined,
   MenuOutlined,
   LinkOutlined,
+  AppstoreOutlined,
 } from "@ant-design/icons";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import PerformancePage from "./pages/PerformancePage";
 import ConnectionPage from "./pages/ConnectionPage";
 import ConnectPage from "./pages/ConnectPage";
+import SecuritiesPage from "./pages/SecuritiesPage";
 import { useCurrentClient } from "./state/currentClientContext";
 
 const { Content, Header } = Layout;
@@ -31,6 +33,7 @@ const QUOTE_UPDATES_SUBSCRIPTION = gql`
 const menuItems: MenuProps["items"] = [
   { key: "/", label: "Accueil", icon: <HomeOutlined /> },
   { key: "/performances", label: "Performances", icon: <LineChartOutlined /> },
+  { key: "/securities", label: "Titres", icon: <AppstoreOutlined /> },
   { key: "/connection", label: "Connexion", icon: <LinkOutlined /> },
 ];
 
@@ -104,6 +107,9 @@ const App = () => {
     if (location.pathname.startsWith("/connection")) {
       return "/connection";
     }
+    if (location.pathname.startsWith("/securities")) {
+      return "/securities";
+    }
     return "/";
   }, [location.pathname]);
 
@@ -150,6 +156,7 @@ const App = () => {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/performances" element={<PerformancePage />} />
+            <Route path="/securities" element={<SecuritiesPage />} />
             <Route path="/connection" element={<ConnectionPage />} />
             <Route path="/connect" element={<ConnectPage />} />
           </Routes>

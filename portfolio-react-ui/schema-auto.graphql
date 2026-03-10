@@ -25,6 +25,16 @@ type DeltaPoint {
   value: MoneyInfo
 }
 
+type KeyValueEntry {
+  key: String
+  value: String
+}
+
+input KeyValueInputInput {
+  key: String
+  value: String
+}
+
 """A 64-bit signed integer"""
 scalar Long
 
@@ -35,7 +45,10 @@ type MoneyInfo {
 
 """Mutation root"""
 type Mutation {
+  updateUserReactUIPreferences(entries: [KeyValueInputInput], clientId: String): [KeyValueEntry]
+  createSecurity(calendar: String, note: String, feedURL: String, clientId: String, latestFeedURL: String, tickerSymbol: String, latestFeed: String, targetCurrencyCode: String, feed: String, onlineId: String, name: String, attributes: [SecurityAttributeInputInput], retired: Boolean, wkn: String, currencyCode: String, isin: String): SecurityInfo
   updateQuotes(clientId: String, scope: UpdateQuotesScope): UpdateQuotesResult
+  updateSecurity(calendar: String, note: String, feedURL: String, clientId: String, latestFeedURL: String, tickerSymbol: String, securityId: String, latestFeed: String, targetCurrencyCode: String, feed: String, onlineId: String, name: String, attributes: [SecurityAttributeInputInput], retired: Boolean, wkn: String, currencyCode: String, isin: String): SecurityInfo
 }
 
 type PerformancePortfolioInfo {
@@ -69,12 +82,6 @@ type PerformanceSecurityInfo {
   taxonomyAssignments: [PerformanceTaxonomyAssignmentInfo]
 }
 
-type PerformanceTotalInfo {
-  delta: MoneyInfo
-  deltaPercent: Float!
-  startValue: MoneyInfo
-}
-
 type PerformanceTaxonomyAssignmentInfo {
   classificationId: String
   classificationName: String
@@ -97,22 +104,32 @@ type PerformanceTaxonomyInfo {
   taxonomyName: String
 }
 
+type PerformanceTotalInfo {
+  delta: MoneyInfo
+  deltaPercent: Float!
+  startValue: MoneyInfo
+}
+
 type PortfolioSecurityPerformanceResult {
   portfolios: [PerformancePortfolioInfo]
-  securities: [PerformanceSecurityInfo]
   referenceAccounts: [PerformanceReferenceAccountInfo]
+  securities: [PerformanceSecurityInfo]
   taxonomies: [PerformanceTaxonomyInfo]
   total: PerformanceTotalInfo
 }
 
 """Query root"""
 type Query {
-  clientFilterAccumulatedDelta(filterId: String, portfolioId: String, clientId: String, endDate: String, securityId: String, referenceAccountId: String, classificationId: String, startDate: String): [DeltaPoint]
+  clientFilterAccumulatedDelta(filterId: String, portfolioId: String, clientId: String, endDate: String, referenceAccountId: String, securityId: String, classificationId: String, startDate: String): [DeltaPoint]
+  securityAttributes(clientId: String): [SecurityAttributeTypeInfo]
   clients: [ClientInfo]
   clientFilterDelta(filterId: String, clientId: String, endDate: String, startDate: String): MoneyInfo
   portfolioSecurityPerformance(filterId: String, clientId: String, endDate: String, startDate: String): PortfolioSecurityPerformanceResult
+  userReactUIPreferences(clientId: String): [KeyValueEntry]
   reportingPeriods(clientId: String, referenceDate: String): [ReportingPeriodInfo]
   clientFilters(clientId: String): [ClientFilterInfo]
+  securityQuotes(clientId: String, endDate: String, securityId: String, startDate: String): [SecurityQuoteInfo]
+  securities(clientId: String): [SecurityInfo]
 }
 
 type QuoteUpdateProgress {
@@ -126,6 +143,47 @@ type ReportingPeriodInfo {
   endDate: String
   label: String
   startDate: String
+}
+
+type SecurityAttributeInfo {
+  id: String
+  name: String
+  value: String
+}
+
+input SecurityAttributeInputInput {
+  id: String
+  value: String
+}
+
+type SecurityAttributeTypeInfo {
+  id: String
+  name: String
+}
+
+type SecurityInfo {
+  attributes: [SecurityAttributeInfo]
+  calendar: String
+  currencyCode: String
+  feed: String
+  feedURL: String
+  id: String
+  isin: String
+  latestFeed: String
+  latestFeedURL: String
+  name: String
+  note: String
+  onlineId: String
+  retired: Boolean!
+  targetCurrencyCode: String
+  tickerSymbol: String
+  wkn: String
+}
+
+type SecurityQuoteInfo {
+  currencyCode: String
+  date: String
+  value: Float!
 }
 
 """Subscription root"""
@@ -143,3 +201,4 @@ enum UpdateQuotesScope {
   ALL
   HOLDINGS
 }
+

@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.eclipse.jface.preference.IPreferenceStore;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -42,7 +43,7 @@ public class GraphQLServerAddon
     private static final String CORS_ALLOWED_ORIGIN = "capacitor://localhost";
     private static final String CORS_ALLOWED_ORIGIN_DEV = "http://localhost:5173";
 
-    private final Gson gson = new Gson();
+    private final Gson gson = new GsonBuilder().serializeNulls().create();
 
     @Inject
     private ClientInputFactory clientInputFactory;

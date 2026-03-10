@@ -14,16 +14,23 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+
 import io.leangen.graphql.annotations.GraphQLArgument;
+import io.leangen.graphql.annotations.GraphQLInputField;
 import io.leangen.graphql.annotations.GraphQLMutation;
 import io.leangen.graphql.annotations.GraphQLQuery;
 import io.leangen.graphql.annotations.GraphQLSubscription;
 import name.abuchen.portfolio.model.Account;
+import name.abuchen.portfolio.model.AttributeType;
 import name.abuchen.portfolio.model.Classification;
 import name.abuchen.portfolio.model.Client;
 import name.abuchen.portfolio.model.InvestmentVehicle;
 import name.abuchen.portfolio.model.Portfolio;
 import name.abuchen.portfolio.model.Security;
+import name.abuchen.portfolio.model.SecurityPrice;
 import name.abuchen.portfolio.model.Taxonomy;
 import name.abuchen.portfolio.money.CurrencyConverterImpl;
 import name.abuchen.portfolio.money.Money;
@@ -55,6 +62,8 @@ import reactor.core.publisher.Flux;
 public class PortfolioGraphQLQueries
 {
     private final ClientInputFactory clientInputFactory;
+    private final Gson gson = new Gson();
+    private static final String USER_REACT_UI_PREF_KEY = "UserReactUIPref"; //$NON-NLS-1$
 
     public PortfolioGraphQLQueries(ClientInputFactory clientInputFactory)
     {
@@ -238,6 +247,90 @@ public class PortfolioGraphQLQueries
         return new PortfolioSecurityPerformanceResult(portfolios, securities, referenceAccounts, taxonomies, total);
     }
 
+    @GraphQLQuery(name = "securities")
+    public List<SecurityInfo> securities(@GraphQLArgument(name = "clientId") String clientId)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return List.of();
+
+        Client client = input.get().getClient();
+        return client.getSecurities().stream()
+                        .sorted(new Security.ByName(client.getSecurityNameConfig()))
+                        .map(security -> toSecurityInfo(security, client))
+                        .toList();
+    }
+
+    @GraphQLQuery(name = "securityQuotes")
+    public List<SecurityQuoteInfo> securityQuotes(@GraphQLArgument(name = "clientId") String clientId,
+                    @GraphQLArgument(name = "securityId") String securityId,
+                    @GraphQLArgument(name = "startDate") String startDate,
+                    @GraphQLArgument(name = "endDate") String endDate)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return List.of();
+
+        Client client = input.get().getClient();
+        Security security = client.getSecurities().stream().filter(s -> securityId.equals(s.getUUID())).findFirst()
+                        .orElse(null);
+        if (security == null)
+            throw new IllegalArgumentException("Unknown securityId: " + securityId); //$NON-NLS-1$
+
+        LocalDate start = startDate != null ? LocalDate.parse(startDate) : null;
+        LocalDate end = endDate != null ? LocalDate.parse(endDate) : null;
+
+        return security.getPrices().stream()
+                        .filter(price -> start == null || !price.getDate().isBefore(start))
+                        .filter(price -> end == null || !price.getDate().isAfter(end))
+                        .map(price -> toSecurityQuoteInfo(security, price))
+                        .toList();
+    }
+
+    @GraphQLQuery(name = "securityAttributes")
+    public List<SecurityAttributeTypeInfo> securityAttributes(@GraphQLArgument(name = "clientId") String clientId)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return List.of();
+
+        Client client = input.get().getClient();
+        return client.getSettings().getAttributeTypes().filter(type -> type.supports(Security.class))
+                        .map(SecurityAttributeTypeInfo::new).toList();
+    }
+
+    @GraphQLQuery(name = "userReactUIPreferences")
+    public List<KeyValueEntry> userReactUIPreferences(@GraphQLArgument(name = "clientId") String clientId)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return List.of();
+
+        String json = input.get().getPreferenceStore().getString(USER_REACT_UI_PREF_KEY);
+        if (json == null || json.isBlank())
+            return List.of();
+
+        try
+        {
+            JsonObject object = gson.fromJson(json, JsonObject.class);
+            Map<String, String> values = new HashMap<>();
+            if (object != null)
+            {
+                for (Map.Entry<String, JsonElement> entry : object.entrySet())
+                {
+                    values.put(entry.getKey(), entry.getValue().isJsonNull() ? null : entry.getValue().getAsString());
+                }
+            }
+            return values.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                            .map(entry -> new KeyValueEntry(entry.getKey(), entry.getValue()))
+                            .toList();
+        }
+        catch (Exception e)
+        {
+            throw new IllegalStateException("Invalid UserReactUIPref JSON", e); //$NON-NLS-1$
+        }
+    }
+
     @GraphQLMutation(name = "updateQuotes")
     public UpdateQuotesResult updateQuotes(@GraphQLArgument(name = "clientId") String clientId,
                     @GraphQLArgument(name = "scope") UpdateQuotesScope scope)
@@ -279,6 +372,130 @@ public class PortfolioGraphQLQueries
         }
 
         return new UpdateQuotesResult(true, count);
+    }
+
+    @GraphQLMutation(name = "createSecurity")
+    public SecurityInfo createSecurity(@GraphQLArgument(name = "clientId") String clientId,
+                    @GraphQLArgument(name = "name") String name,
+                    @GraphQLArgument(name = "currencyCode") String currencyCode,
+                    @GraphQLArgument(name = "targetCurrencyCode") String targetCurrencyCode,
+                    @GraphQLArgument(name = "note") String note,
+                    @GraphQLArgument(name = "isin") String isin,
+                    @GraphQLArgument(name = "tickerSymbol") String tickerSymbol,
+                    @GraphQLArgument(name = "wkn") String wkn,
+                    @GraphQLArgument(name = "calendar") String calendar,
+                    @GraphQLArgument(name = "feed") String feed,
+                    @GraphQLArgument(name = "feedURL") String feedURL,
+                    @GraphQLArgument(name = "latestFeed") String latestFeed,
+                    @GraphQLArgument(name = "latestFeedURL") String latestFeedURL,
+                    @GraphQLArgument(name = "onlineId") String onlineId,
+                    @GraphQLArgument(name = "retired") Boolean retired,
+                    @GraphQLArgument(name = "attributes") List<SecurityAttributeInput> attributes)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return null;
+
+        if (name == null || name.isBlank())
+            throw new IllegalArgumentException("Missing security name"); //$NON-NLS-1$
+
+        String normalizedCurrency = normalizeText(currencyCode);
+        if (normalizedCurrency == null)
+            throw new IllegalArgumentException("Missing currencyCode"); //$NON-NLS-1$
+
+        Client client = input.get().getClient();
+        Security security = new Security(name, normalizedCurrency);
+
+        applySecurityUpdates(security, targetCurrencyCode, note, isin, tickerSymbol, wkn, calendar, feed, feedURL,
+                        latestFeed, latestFeedURL, onlineId, retired, true);
+        applySecurityAttributes(security, client, attributes);
+        client.addSecurity(security);
+
+        return toSecurityInfo(security, client);
+    }
+
+    @GraphQLMutation(name = "updateSecurity")
+    public SecurityInfo updateSecurity(@GraphQLArgument(name = "clientId") String clientId,
+                    @GraphQLArgument(name = "securityId") String securityId,
+                    @GraphQLArgument(name = "name") String name,
+                    @GraphQLArgument(name = "currencyCode") String currencyCode,
+                    @GraphQLArgument(name = "targetCurrencyCode") String targetCurrencyCode,
+                    @GraphQLArgument(name = "note") String note,
+                    @GraphQLArgument(name = "isin") String isin,
+                    @GraphQLArgument(name = "tickerSymbol") String tickerSymbol,
+                    @GraphQLArgument(name = "wkn") String wkn,
+                    @GraphQLArgument(name = "calendar") String calendar,
+                    @GraphQLArgument(name = "feed") String feed,
+                    @GraphQLArgument(name = "feedURL") String feedURL,
+                    @GraphQLArgument(name = "latestFeed") String latestFeed,
+                    @GraphQLArgument(name = "latestFeedURL") String latestFeedURL,
+                    @GraphQLArgument(name = "onlineId") String onlineId,
+                    @GraphQLArgument(name = "retired") Boolean retired,
+                    @GraphQLArgument(name = "attributes") List<SecurityAttributeInput> attributes)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return null;
+
+        Client client = input.get().getClient();
+        Security security = client.getSecurities().stream().filter(s -> securityId.equals(s.getUUID())).findFirst()
+                        .orElse(null);
+        if (security == null)
+            throw new IllegalArgumentException("Unknown securityId: " + securityId); //$NON-NLS-1$
+
+        if (name != null && name.isBlank())
+            throw new IllegalArgumentException("Security name cannot be blank"); //$NON-NLS-1$
+
+        applySecurityUpdates(security, targetCurrencyCode, note, isin, tickerSymbol, wkn, calendar, feed, feedURL,
+                        latestFeed, latestFeedURL, onlineId, retired, false);
+
+        if (name != null)
+            security.setName(name);
+        if (currencyCode != null)
+        {
+            String normalizedCurrency = normalizeText(currencyCode);
+            if (normalizedCurrency == null)
+                throw new IllegalArgumentException("currencyCode cannot be blank"); //$NON-NLS-1$
+            security.setCurrencyCode(normalizedCurrency);
+        }
+
+        applySecurityAttributes(security, client, attributes);
+        return toSecurityInfo(security, client);
+    }
+
+    @GraphQLMutation(name = "updateUserReactUIPreferences")
+    public List<KeyValueEntry> updateUserReactUIPreferences(@GraphQLArgument(name = "clientId") String clientId,
+                    @GraphQLArgument(name = "entries") List<KeyValueInput> entries)
+    {
+        Optional<ClientInput> input = findClientInput(clientId);
+        if (input.isEmpty())
+            return List.of();
+
+        Map<String, String> map = new HashMap<>();
+        if (entries != null)
+        {
+            for (KeyValueInput entry : entries)
+            {
+                if (entry == null || entry.getKey() == null)
+                    continue;
+                map.put(entry.getKey(), entry.getValue());
+            }
+        }
+
+        try
+        {
+            String json = gson.toJson(map);
+            input.get().getPreferenceStore().setValue(USER_REACT_UI_PREF_KEY, json);
+            input.get().getPreferenceStore().save();
+        }
+        catch (Exception e)
+        {
+            throw new IllegalStateException("Failed to store UserReactUIPref", e); //$NON-NLS-1$
+        }
+
+        return map.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                        .map(entry -> new KeyValueEntry(entry.getKey(), entry.getValue()))
+                        .toList();
     }
 
     @GraphQLSubscription(name = "quoteUpdates")
@@ -336,6 +553,102 @@ public class PortfolioGraphQLQueries
         String baseCurrency = client != null ? client.getBaseCurrency() : null;
         String file = input.getFile() != null ? input.getFile().getAbsolutePath() : null;
         return new ClientInfo(clientId(input), input.getLabel(), file, baseCurrency);
+    }
+
+    private SecurityInfo toSecurityInfo(Security security, Client client)
+    {
+        return new SecurityInfo(security, toSecurityAttributeInfos(security, client));
+    }
+
+    private List<SecurityAttributeInfo> toSecurityAttributeInfos(Security security, Client client)
+    {
+        if (security.getAttributes().isEmpty())
+            return List.of();
+
+        Map<String, Object> attributes = security.getAttributes().getMap();
+        return client.getSettings().getAttributeTypes()
+                        .filter(type -> attributes.containsKey(type.getId()))
+                        .map(type -> new SecurityAttributeInfo(type.getId(), type.getName(),
+                                        type.getConverter().toString(attributes.get(type.getId()))))
+                        .sorted((left, right) -> TextUtil.compare(left.getName(), right.getName()))
+                        .toList();
+    }
+
+    private SecurityQuoteInfo toSecurityQuoteInfo(Security security, SecurityPrice price)
+    {
+        return new SecurityQuoteInfo(security.getCurrencyCode(), price.getDate().toString(),
+                        price.getValue() / Values.Quote.divider());
+    }
+
+    private void applySecurityUpdates(Security security, String targetCurrencyCode, String note, String isin,
+                    String tickerSymbol, String wkn, String calendar, String feed, String feedURL, String latestFeed,
+                    String latestFeedURL, String onlineId, Boolean retired, boolean includeNulls)
+    {
+        if (includeNulls || targetCurrencyCode != null)
+            security.setTargetCurrencyCode(normalizeText(targetCurrencyCode));
+        if (includeNulls || note != null)
+            security.setNote(normalizeText(note));
+        if (includeNulls || isin != null)
+            security.setIsin(normalizeText(isin));
+        if (includeNulls || tickerSymbol != null)
+            security.setTickerSymbol(normalizeText(tickerSymbol));
+        if (includeNulls || wkn != null)
+            security.setWkn(normalizeText(wkn));
+        if (includeNulls || calendar != null)
+            security.setCalendar(normalizeText(calendar));
+        if (includeNulls || feed != null)
+            security.setFeed(normalizeText(feed));
+        if (includeNulls || feedURL != null)
+            security.setFeedURL(normalizeText(feedURL));
+        if (includeNulls || latestFeed != null)
+            security.setLatestFeed(normalizeText(latestFeed));
+        if (includeNulls || latestFeedURL != null)
+            security.setLatestFeedURL(normalizeText(latestFeedURL));
+        if (includeNulls || onlineId != null)
+            security.setOnlineId(normalizeText(onlineId));
+        if (retired != null)
+            security.setRetired(retired);
+    }
+
+    private void applySecurityAttributes(Security security, Client client, List<SecurityAttributeInput> attributes)
+    {
+        if (attributes == null)
+            return;
+
+        for (SecurityAttributeInput attribute : attributes)
+        {
+            if (attribute == null || attribute.getId() == null)
+                continue;
+
+            AttributeType type = findAttributeType(client, attribute.getId());
+            String value = attribute.getValue();
+            if (value == null)
+            {
+                security.getAttributes().remove(type);
+                continue;
+            }
+
+            Object parsed = type.getConverter().fromString(value);
+            if (parsed == null)
+                security.getAttributes().remove(type);
+            else
+                security.getAttributes().put(type, parsed);
+        }
+    }
+
+    private AttributeType findAttributeType(Client client, String attributeId)
+    {
+        return client.getSettings().getAttributeTypes().filter(type -> attributeId.equals(type.getId())).findFirst()
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                        "Unknown attributeId: " + attributeId)); //$NON-NLS-1$
+    }
+
+    private String normalizeText(String value)
+    {
+        if (value == null)
+            return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private Optional<ClientInput> findClientInput(String clientId)
@@ -558,6 +871,312 @@ public class PortfolioGraphQLQueries
         public String getUuids()
         {
             return uuids;
+        }
+    }
+
+    public static final class SecurityInfo
+    {
+        private final String id;
+        private final String name;
+        private final String currencyCode;
+        private final String targetCurrencyCode;
+        private final String note;
+        private final String isin;
+        private final String tickerSymbol;
+        private final String wkn;
+        private final String calendar;
+        private final String feed;
+        private final String feedURL;
+        private final String latestFeed;
+        private final String latestFeedURL;
+        private final String onlineId;
+        private final boolean retired;
+        private final List<SecurityAttributeInfo> attributes;
+
+        public SecurityInfo(Security security, List<SecurityAttributeInfo> attributes)
+        {
+            this.id = security.getUUID();
+            this.name = security.getName();
+            this.currencyCode = security.getCurrencyCode();
+            this.targetCurrencyCode = security.getTargetCurrencyCode();
+            this.note = security.getNote();
+            this.isin = security.getIsin();
+            this.tickerSymbol = security.getTickerSymbol();
+            this.wkn = security.getWkn();
+            this.calendar = security.getCalendar();
+            this.feed = security.getFeed();
+            this.feedURL = security.getFeedURL();
+            this.latestFeed = security.getLatestFeed();
+            this.latestFeedURL = security.getLatestFeedURL();
+            this.onlineId = security.getOnlineId();
+            this.retired = security.isRetired();
+            this.attributes = attributes;
+        }
+
+        @GraphQLQuery
+        public String getId()
+        {
+            return id;
+        }
+
+        @GraphQLQuery
+        public String getName()
+        {
+            return name;
+        }
+
+        @GraphQLQuery
+        public String getCurrencyCode()
+        {
+            return currencyCode;
+        }
+
+        @GraphQLQuery
+        public String getTargetCurrencyCode()
+        {
+            return targetCurrencyCode;
+        }
+
+        @GraphQLQuery
+        public String getNote()
+        {
+            return note;
+        }
+
+        @GraphQLQuery
+        public String getIsin()
+        {
+            return isin;
+        }
+
+        @GraphQLQuery
+        public String getTickerSymbol()
+        {
+            return tickerSymbol;
+        }
+
+        @GraphQLQuery
+        public String getWkn()
+        {
+            return wkn;
+        }
+
+        @GraphQLQuery
+        public String getCalendar()
+        {
+            return calendar;
+        }
+
+        @GraphQLQuery
+        public String getFeed()
+        {
+            return feed;
+        }
+
+        @GraphQLQuery
+        public String getFeedURL()
+        {
+            return feedURL;
+        }
+
+        @GraphQLQuery
+        public String getLatestFeed()
+        {
+            return latestFeed;
+        }
+
+        @GraphQLQuery
+        public String getLatestFeedURL()
+        {
+            return latestFeedURL;
+        }
+
+        @GraphQLQuery
+        public String getOnlineId()
+        {
+            return onlineId;
+        }
+
+        @GraphQLQuery
+        public boolean isRetired()
+        {
+            return retired;
+        }
+
+        @GraphQLQuery
+        public List<SecurityAttributeInfo> getAttributes()
+        {
+            return attributes;
+        }
+    }
+
+    public static final class SecurityAttributeInfo
+    {
+        private final String attrid;
+        private final String name;
+        private final String value;
+
+        public SecurityAttributeInfo(String id, String name, String value)
+        {
+            this.attrid = id;
+            this.name = name;
+            this.value = value;
+        }
+
+        @GraphQLQuery
+        public String getAttrid()
+        {
+            return attrid;
+        }
+
+        @GraphQLQuery
+        public String getName()
+        {
+            return name;
+        }
+
+        @GraphQLQuery
+        public String getValue()
+        {
+            return value;
+        }
+    }
+
+    public static final class SecurityAttributeTypeInfo
+    {
+        private final String id;
+        private final String name;
+
+        public SecurityAttributeTypeInfo(AttributeType type)
+        {
+            this.id = type.getId();
+            this.name = type.getName();
+        }
+
+        @GraphQLQuery
+        public String getId()
+        {
+            return id;
+        }
+
+        @GraphQLQuery
+        public String getName()
+        {
+            return name;
+        }
+    }
+
+    public static final class KeyValueEntry
+    {
+        private final String key;
+        private final String value;
+
+        public KeyValueEntry(String key, String value)
+        {
+            this.key = key;
+            this.value = value;
+        }
+
+        @GraphQLQuery
+        public String getKey()
+        {
+            return key;
+        }
+
+        @GraphQLQuery
+        public String getValue()
+        {
+            return value;
+        }
+    }
+
+    public static final class KeyValueInput
+    {
+        @GraphQLInputField
+        private String key;
+
+        @GraphQLInputField
+        private String value;
+
+        public String getKey()
+        {
+            return key;
+        }
+
+        public void setKey(String key)
+        {
+            this.key = key;
+        }
+
+        public String getValue()
+        {
+            return value;
+        }
+
+        public void setValue(String value)
+        {
+            this.value = value;
+        }
+    }
+
+    public static final class SecurityAttributeInput
+    {
+        @GraphQLInputField
+        private String id;
+
+        @GraphQLInputField
+        private String value;
+
+        public String getId()
+        {
+            return id;
+        }
+
+        public void setId(String id)
+        {
+            this.id = id;
+        }
+
+        public String getValue()
+        {
+            return value;
+        }
+
+        public void setValue(String value)
+        {
+            this.value = value;
+        }
+    }
+
+    public static final class SecurityQuoteInfo
+    {
+        private final String currencyCode;
+        private final String date;
+        private final double value;
+
+        public SecurityQuoteInfo(String currencyCode, String date, double value)
+        {
+            this.currencyCode = currencyCode;
+            this.date = date;
+            this.value = value;
+        }
+
+        @GraphQLQuery
+        public String getCurrencyCode()
+        {
+            return currencyCode;
+        }
+
+        @GraphQLQuery
+        public String getDate()
+        {
+            return date;
+        }
+
+        @GraphQLQuery
+        public double getValue()
+        {
+            return value;
         }
     }
 
