@@ -1,4 +1,4 @@
-import { Alert, Button, Select, Space, Spin, Table, Typography } from "antd";
+import { Alert, Button, Checkbox, Select, Space, Spin, Table, Typography } from "antd";
 import type { TableProps } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import type { EChartsOption } from "echarts";
@@ -27,11 +27,13 @@ type PerformanceResultsDesktopProps = {
   performanceTotals: PerformanceTotals;
   zoomRange: ZoomRange;
   selectedRowKeys: string[];
+  showTotalSeries: boolean;
   sortState: SortState;
   groupingMode: string;
   groupingOptions: Array<{ value: string; label: string }>;
   onGroupingModeChange: (value: string) => void;
   onRowSelectionChange: (keys: Array<string | number>, rows: PerformanceRow[]) => void;
+  onToggleTotalSeries: (checked: boolean) => void;
   onTableChange: TableProps<PerformanceRow>["onChange"];
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
   formatPercent: (value: number | null | undefined) => string;
@@ -53,11 +55,13 @@ const PerformanceResultsDesktop = ({
   performanceTotals,
   zoomRange,
   selectedRowKeys,
+  showTotalSeries,
   sortState,
   groupingMode,
   groupingOptions,
   onGroupingModeChange,
   onRowSelectionChange,
+  onToggleTotalSeries,
   onTableChange,
   formatAmount,
   formatPercent,
@@ -285,7 +289,12 @@ const PerformanceResultsDesktop = ({
                   summary={() => (
                     <Table.Summary>
                       <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} />
+                        <Table.Summary.Cell index={0}>
+                          <Checkbox
+                            checked={showTotalSeries}
+                            onChange={(event) => onToggleTotalSeries(event.target.checked)}
+                          />
+                        </Table.Summary.Cell>
                         <Table.Summary.Cell index={1}>
                           <Typography.Text strong>Total</Typography.Text>
                         </Table.Summary.Cell>

@@ -34,6 +34,7 @@ type PerformanceResultsMobileProps = {
   securitiesRows: PerformanceRow[];
   expandedPortfolioKeys: string[];
   selectedRowKeys: string[];
+  showTotalSeries: boolean;
   zoomRange: ZoomRange;
   totalSummary: TotalSummary;
   performanceTotals: PerformanceTotals;
@@ -44,6 +45,7 @@ type PerformanceResultsMobileProps = {
   onTogglePerfSortDirection: () => void;
   onToggleFlatSecurities: () => void;
   onTogglePortfolioExpanded: (rowKey: string) => void;
+  onToggleTotalSeries: (checked: boolean) => void;
   onListSelectionChange: (row: PerformanceRow, checked: boolean) => void;
   formatAmount: (amount: number | null, currencyCode: string | null) => string;
   formatPercent: (value: number | null | undefined) => string;
@@ -68,6 +70,7 @@ const PerformanceResultsMobile = ({
   securitiesRows,
   expandedPortfolioKeys,
   selectedRowKeys,
+  showTotalSeries,
   zoomRange,
   totalSummary,
   performanceTotals,
@@ -78,6 +81,7 @@ const PerformanceResultsMobile = ({
   onTogglePerfSortDirection,
   onToggleFlatSecurities,
   onTogglePortfolioExpanded,
+  onToggleTotalSeries,
   onListSelectionChange,
   formatAmount,
   formatPercent,
@@ -228,7 +232,12 @@ const PerformanceResultsMobile = ({
                     </div>
                     <div className="performance-list-values">
                       <span className="performance-list-toggle-spacer" />
-                      <span className="performance-list-checkbox" />
+                      <span className="performance-list-checkbox">
+                        <Checkbox
+                          checked={showTotalSeries}
+                          onChange={(event) => onToggleTotalSeries(event.target.checked)}
+                        />
+                      </span>
                       <div className="performance-list-metrics">
                         <Typography.Text strong className="performance-list-value">
                           {formatAmount(

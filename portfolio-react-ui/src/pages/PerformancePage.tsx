@@ -458,6 +458,7 @@ const PerformancePage = () => {
   const [selectedFilterId, setSelectedFilterId] = useState<string | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<PerformanceRow[]>([]);
+  const [showTotalSeries, setShowTotalSeries] = useState(true);
   const [sortState, setSortState] = useState<SortState>({
     columnKey: null,
     order: null,
@@ -557,6 +558,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       setPeriodReferenceDate(dayjs().format("YYYY-MM-DD"));
       setSelectedFilterId(null);
       setSelectedRowKeys([]);
+      setShowTotalSeries(true);
       setSortState({ columnKey: null, order: null });
       setExpandedPortfolioKeys([]);
       return;
@@ -576,6 +578,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
         periodReferenceDate?: string | null;
         filterId?: string | null;
         selectedRowKeys?: string[] | null;
+        showTotalSeries?: boolean | null;
         sortState?: { columnKey?: string | null; order?: "ascend" | "descend" | null } | null;
       };
       if (parsed.startDate && parsed.endDate) {
@@ -589,6 +592,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       );
       setSelectedFilterId(parsed.filterId ?? null);
       setSelectedRowKeys(parsed.selectedRowKeys ?? []);
+      setShowTotalSeries(parsed.showTotalSeries ?? true);
       setSortState({
         columnKey: parsed.sortState?.columnKey ?? null,
         order: parsed.sortState?.order ?? null,
@@ -600,6 +604,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       setPeriodReferenceDate(dayjs().format("YYYY-MM-DD"));
       setSelectedFilterId(null);
       setSelectedRowKeys([]);
+      setShowTotalSeries(true);
       setSortState({ columnKey: null, order: null });
       setExpandedPortfolioKeys([]);
     }
@@ -643,6 +648,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       periodReferenceDate,
       filterId: selectedFilterId,
       selectedRowKeys,
+      showTotalSeries,
       sortState,
     };
     localStorage.setItem(
@@ -656,6 +662,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
     selectedPeriodCode,
     selectedFilterId,
     selectedRowKeys,
+    showTotalSeries,
     sortState,
   ]);
 
@@ -812,15 +819,15 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
 
   const hasChartData = useMemo(
     () =>
-      chartData.length > 0 ||
+      (showTotalSeries && chartData.length > 0) ||
       selectionSeries.some((series) => series.points.length > 0),
-    [chartData, selectionSeries]
+    [chartData, selectionSeries, showTotalSeries]
   );
 
   const chartOptions = useMemo<EChartsOption>(() => {
     const series = [];
 
-    if (chartData.length) {
+    if (showTotalSeries && chartData.length) {
       series.push({
         name: "Accumulated Delta",
         type: "line",
@@ -878,17 +885,17 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
       },
       series,
     };
-  }, [chartData, isMobileLayout, selectionSeries]);
+  }, [chartData, isMobileLayout, selectionSeries, showTotalSeries]);
 
   const selectionColors = useMemo<Record<string, string>>(() => {
-    const offset = chartData.length ? 1 : 0;
+    const offset = showTotalSeries && chartData.length ? 1 : 0;
     const map: Record<string, string> = {};
     selectionSeries.forEach((seriesEntry, index) => {
       const colorIndex = (offset + index) % CHART_COLORS.length;
       map[seriesEntry.key] = CHART_COLORS[colorIndex];
     });
     return map;
-  }, [chartData.length, selectionSeries]);
+  }, [chartData.length, selectionSeries, showTotalSeries]);
 
   useEffect(() => {
     if (!selectedPeriodCode) return;
@@ -1591,6 +1598,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
               securitiesRows={flatAssetRows}
               listSortDirection={listSortDirection}
               listPerfDirection={listPerfDirection}
+              showTotalSeries={showTotalSeries}
               onToggleListSortDirection={() => {
                 setListSortMode("alpha");
                 setListSortDirection((previous) => (previous === "asc" ? "desc" : "asc"));
@@ -1610,6 +1618,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
               totalSummary={totalSummary}
               performanceTotals={performanceTotals}
               onTogglePortfolioExpanded={togglePortfolioExpanded}
+              onToggleTotalSeries={setShowTotalSeries}
               onListSelectionChange={handleListSelectionChange}
               formatAmount={formatAmount}
               formatPercent={formatPercent}
@@ -1632,6 +1641,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
             performanceTotals={performanceTotals}
             zoomRange={zoomRange}
             selectedRowKeys={selectedRowKeys}
+            showTotalSeries={showTotalSeries}
             sortState={sortState}
             groupingMode={groupingMode}
             groupingOptions={groupingOptions}
@@ -1639,6 +1649,7 @@ const { data: filtersData, loading: filtersLoading } = useQuery<{
               setGroupingMode(value as GroupingMode)
             }
             onRowSelectionChange={handleRowSelectionChange}
+            onToggleTotalSeries={setShowTotalSeries}
             onTableChange={handleTableChange}
             formatAmount={formatAmount}
             formatPercent={formatPercent}
